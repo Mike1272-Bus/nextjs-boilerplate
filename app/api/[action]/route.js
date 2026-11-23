@@ -28,6 +28,25 @@ const patron = u => { if (u.role !== 'patron') throw new Erreur('Réservé au re
 const txt = (v, max = 200) => String(v ?? '').trim().slice(0, max);
 const num = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
 
+// ---------- Outils admin ----------
+const admin = b => { if (!process.env.ADMIN_KEY || b.admin_key !== process.env.ADMIN_KEY) throw new Erreur('Clé administrateur incorrecte.', 403); };
+const aujourdhui = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0, 10);
+const ajouterJours = (base, n) => { const d = new Date(base + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const CHAMPS_ADMIN = 'id,code,nom,whatsapp_patron,couleur,couleur2,abonnement_actif,abonnement_fin,frais_installation,montant_mensuel,lien_paiement_installation,lien_paiement_mensuel,installation_payee,installation_payee_le';
+const lienOk = v => /^https?:\/\/\S+$/i.test(String(v || '').trim());
+function champsPaiement(b) {
+  const m = {};
+  const fi = num(b.frais_installation), mm = num(b.montant_mensuel);
+  if (fi !== null && fi >= 0) m.frais_installation = fi;
+  if (mm !== null && mm >= 0) m.montant_mensuel = mm;
+  for (const k of ['lien_paiement_installation', 'lien_paiement_mensuel']) {
+    if (b[k] === '') m[k] = null;
+    else if (lienOk(b[k])) m[k] = String(b[k]).trim().slice(0, 500);
+    else if (b[k] !== undefined && b[k] !== null) throw new Erreur('Lien de paiement invalide (il doit commencer par https://).');
+  }
+  return m;
+}
+
 async function boutiqueAutorisee(sb, u, e, boutiqueId) {
   const id = u.role === 'vendeur' && u.boutique_id ? u.boutique_id : boutiqueId;
   const { data } = await sb.from('boutiques').select('id,nom').eq('id', id).eq('entreprise_id', e.id).single();
@@ -267,38 +286,70 @@ const actions = {
 
   // ---------- Administration My automation ----------
   async admin_creer(sb, b) {
-    if (!process.env.ADMIN_KEY || b.admin_key !== process.env.ADMIN_KEY) throw new Erreur('Clé administrateur incorrecte.', 403);
+    admin(b);
     const code = txt(b.code, 40).toUpperCase().replace(/\s+/g, '');
     if (!code || !txt(b.nom) || !txt(b.patron_nom) || !/^\d{4,6}$/.test(String(b.patron_pin))) throw new Erreur('Code, nom, responsable et PIN (4 à 6 chiffres) obligatoires.');
     const modules = Array.isArray(b.modules) && b.modules.length ? b.modules : ['stock', 'arrivage'];
+    const payee = b.installation_payee === true;
+    const fin = /^\d{4}-\d{2}-\d{2}$/.test(b.abonnement_fin || '') ? b.abonnement_fin : (payee ? ajouterJours(aujourdhui(), 30) : null);
     const { data: e, error } = await sb.from('entreprises').insert({ code, nom: txt(b.nom), modules, whatsapp_patron: normTel(b.whatsapp) || null,
       couleur: couleurOk(b.couleur) ? b.couleur : '#3b4fe4', couleur2: couleurOk(b.couleur2) ? b.couleur2 : '#5667e7',
-      abonnement_fin: /^\d{4}-\d{2}-\d{2}$/.test(b.abonnement_fin || '') ? b.abonnement_fin : null }).select('id').single();
+      ...champsPaiement(b),
+      // Tant que l'installation n'est pas payée, l'app reste bloquée (écran « en pause »)
+      installation_payee: payee, installation_payee_le: payee ? aujourdhui() : null,
+      abonnement_actif: payee, abonnement_fin: fin }).select(CHAMPS_ADMIN).single();
     if (error) throw new Erreur(error.code === '23505' ? 'Ce code entreprise existe déjà.' : error.message);
     const noms = String(b.boutiques || 'Boutique 1').split(',').map(s => s.trim()).filter(Boolean);
     await sb.from('boutiques').insert(noms.map(nom => ({ nom, entreprise_id: e.id })));
     await sb.from('utilisateurs').insert({ entreprise_id: e.id, nom: txt(b.patron_nom), role: 'patron', pin_hash: hashPin(b.patron_pin) });
-    notifierN8n('nouveau_client', { code, nom: txt(b.nom), whatsapp_patron: normTel(b.whatsapp) || null }, { modules, boutiques: noms });
-    return { code };
+    notifierN8n('nouveau_client', e, { modules, boutiques: noms, frais_installation: e.frais_installation, montant_mensuel: e.montant_mensuel,
+      lien_paiement: e.lien_paiement_installation, installation_payee: payee });
+    const { id, ...ent } = e;
+    return { code, entreprise: { ...ent, patron_nom: txt(b.patron_nom) } };
   },
   async admin_lire(sb, b) {
-    if (!process.env.ADMIN_KEY || b.admin_key !== process.env.ADMIN_KEY) throw new Erreur('Clé administrateur incorrecte.', 403);
-    const { data } = await sb.from('entreprises').select('code,nom,couleur,couleur2,abonnement_actif,abonnement_fin').ilike('code', txt(b.code, 40)).single();
+    admin(b);
+    const { data } = await sb.from('entreprises').select(CHAMPS_ADMIN).ilike('code', txt(b.code, 40)).single();
     if (!data) throw new Erreur('Code entreprise inconnu.');
-    return { entreprise: data };
+    const { data: p } = await sb.from('utilisateurs').select('nom').eq('entreprise_id', data.id).eq('role', 'patron').order('created_at').limit(1);
+    const { id, ...ent } = data;
+    return { entreprise: { ...ent, patron_nom: p?.[0]?.nom || '' } };
   },
   async admin_modifier(sb, b) {
-    if (!process.env.ADMIN_KEY || b.admin_key !== process.env.ADMIN_KEY) throw new Erreur('Clé administrateur incorrecte.', 403);
-    const maj = {};
+    admin(b);
+    const maj = { ...champsPaiement(b) };
     if (couleurOk(b.couleur)) maj.couleur = b.couleur;
     if (couleurOk(b.couleur2)) maj.couleur2 = b.couleur2;
     if (typeof b.abonnement_actif === 'boolean') maj.abonnement_actif = b.abonnement_actif;
     if (b.abonnement_fin === '' || b.abonnement_fin === null) maj.abonnement_fin = null;
     else if (/^\d{4}-\d{2}-\d{2}$/.test(b.abonnement_fin || '')) maj.abonnement_fin = b.abonnement_fin;
-    const { data, error } = await sb.from('entreprises').update(maj).ilike('code', txt(b.code, 40)).select('code,nom,couleur,couleur2,abonnement_actif,abonnement_fin');
+    const { data, error } = await sb.from('entreprises').update(maj).ilike('code', txt(b.code, 40)).select(CHAMPS_ADMIN);
     if (error) throw new Erreur(error.message);
     if (!data?.length) throw new Erreur('Code entreprise inconnu.');
-    return { entreprise: data[0] };
+    const { id, ...ent } = data[0];
+    return { entreprise: ent };
+  },
+  // Paiement Fondeka reçu → 1 clic : installation (active l'app + 30 jours) ou mois suivant (+30 jours)
+  async admin_paiement(sb, b) {
+    admin(b);
+    const { data: e } = await sb.from('entreprises').select(CHAMPS_ADMIN).ilike('code', txt(b.code, 40)).single();
+    if (!e) throw new Erreur('Code entreprise inconnu.');
+    const type = b.type === 'installation' ? 'installation' : 'mensuel';
+    const auj = aujourdhui();
+    const base = e.abonnement_fin && e.abonnement_fin > auj ? e.abonnement_fin : auj;
+    const maj = { abonnement_actif: true, abonnement_fin: ajouterJours(base, 30) };
+    if (type === 'installation') { maj.installation_payee = true; maj.installation_payee_le = auj; }
+    const { data, error } = await sb.from('entreprises').update(maj).eq('id', e.id).select(CHAMPS_ADMIN).single();
+    if (error) throw new Erreur(error.message);
+    // PIN : on ne garde que son empreinte, donc pour l'envoyer au client on peut le redéfinir ici
+    const { data: p } = await sb.from('utilisateurs').select('id,nom').eq('entreprise_id', e.id).eq('role', 'patron').order('created_at').limit(1);
+    if (b.pin !== undefined && b.pin !== '') {
+      if (!/^\d{4,6}$/.test(String(b.pin))) throw new Erreur('PIN : 4 à 6 chiffres.');
+      if (p?.[0]) await sb.from('utilisateurs').update({ pin_hash: hashPin(b.pin) }).eq('id', p[0].id);
+    }
+    notifierN8n('paiement_recu', data, { type, montant: type === 'installation' ? data.frais_installation : data.montant_mensuel, fin: data.abonnement_fin });
+    const { id, ...ent } = data;
+    return { type, entreprise: { ...ent, patron_nom: p?.[0]?.nom || '' } };
   }
 };
 

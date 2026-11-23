@@ -15,10 +15,14 @@ export async function GET(req) {
   let envoyes = 0;
   for (const e of entreprises || []) {
     // Suivi de l'abonnement envoyé chaque soir à n8n (relances de paiement)
-    if (!abonnementValide(e)) { await notifierN8n('abonnement_expire', e, { fin: e.abonnement_fin }); continue; }
+    // Installation pas encore payée : Mike gère lui-même, pas de relance automatique
+    if (e.installation_payee === false) continue;
+    const paiement = { montant: e.montant_mensuel ?? 10, devise: '$', lien_paiement: e.lien_paiement_mensuel || null };
+    if (!abonnementValide(e)) { await notifierN8n('abonnement_expire', e, { fin: e.abonnement_fin, ...paiement }); continue; }
     if (e.abonnement_fin) {
       const jours = Math.round((new Date(e.abonnement_fin) - new Date(auj)) / 864e5);
-      if (jours <= 5) await notifierN8n('abonnement_bientot', e, { fin: e.abonnement_fin, jours_restants: jours });
+      // Rappels à J-5, J-2 et le dernier jour (pas tous les soirs)
+      if ([5, 2, 0].includes(jours)) await notifierN8n('abonnement_bientot', e, { fin: e.abonnement_fin, jours_restants: jours, ...paiement });
     }
     if (!e.whatsapp_patron || !(e.modules || []).includes('stock')) continue;
     const periodes = [];
