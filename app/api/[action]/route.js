@@ -362,6 +362,77 @@ const actions = {
     return { type, facture_id, entreprise: { ...ent, patron_nom: p?.[0]?.nom || '' } };
   },
 
+  // ---------- Formulaire d'inscription (page publique /inscription) ----------
+  async inscription_envoyer(sb, b) {
+    if (b.site) return {}; // piège à robots
+    const t = (v, n = 80) => txt(v, n);
+    const d = {
+      entreprise: t(b.entreprise), responsable: t(b.responsable), whatsapp: normTel(b.whatsapp),
+      activite: t(b.activite, 120), ville: t(b.ville, 60) || 'Lubumbashi',
+      boutiques: (Array.isArray(b.boutiques) ? b.boutiques : []).map(x => t(x)).filter(Boolean).slice(0, 20),
+      vendeurs: (Array.isArray(b.vendeurs) ? b.vendeurs : []).map(v => ({ nom: t(v?.nom), boutique: t(v?.boutique) })).filter(v => v.nom).slice(0, 50),
+      articles: (Array.isArray(b.articles) ? b.articles : []).map(a => ({ nom: t(a?.nom), prix: num(a?.prix), quantite: Math.max(0, Math.round(num(a?.quantite) || 0)), categorie: t(a?.categorie, 40) }))
+        .filter(a => a.nom).slice(0, 500),
+      rapport: ['soir', 'semaine', 'les_deux'].includes(b.rapport) ? b.rapport : 'soir',
+      modules: (Array.isArray(b.modules) ? b.modules : []).filter(m => ['stock', 'arrivage'].includes(m)),
+      clientes: (Array.isArray(b.clientes) ? b.clientes : []).map(c => ({ nom: t(c?.nom), telephone: normTel(c?.telephone) })).filter(c => c.nom && c.telephone.length >= 11).slice(0, 2000),
+      consentement_clientes: b.consentement_clientes === true, accord_whatsapp: b.accord_whatsapp === true
+    };
+    if (!d.entreprise || !d.responsable || d.whatsapp.length < 11) throw new Erreur('Nom de l\'entreprise, votre nom et votre WhatsApp sont obligatoires.');
+    if (!d.accord_whatsapp) throw new Erreur('Merci d\'accepter de recevoir vos rapports et alertes sur WhatsApp.');
+    if (d.clientes.length && !d.consentement_clientes) throw new Erreur('Merci de confirmer que vos clientes acceptent de recevoir vos messages.');
+    if (!d.boutiques.length) d.boutiques = ['Boutique 1'];
+    if (!d.modules.length) d.modules = ['stock', 'arrivage'];
+    const { data, error } = await sb.from('inscriptions').insert({ donnees: d }).select('id').single();
+    if (error) throw new Erreur(error.message);
+    notifierN8n('inscription', { code: '', nom: d.entreprise, whatsapp_patron: d.whatsapp }, { responsable: d.responsable, articles: d.articles.length, clientes: d.clientes.length });
+    return { id: data.id };
+  },
+  async admin_inscriptions(sb, b) {
+    admin(b);
+    const { data } = await sb.from('inscriptions').select('id,donnees,statut,created_at').eq('statut', 'nouvelle').order('created_at', { ascending: false }).limit(30);
+    return { inscriptions: data || [] };
+  },
+  async admin_inscription_refuser(sb, b) {
+    admin(b);
+    await sb.from('inscriptions').update({ statut: 'refusee' }).eq('id', txt(b.id, 40));
+    return {};
+  },
+  // Crée tout le client d'un coup à partir du formulaire : entreprise, boutiques, responsable, vendeurs, articles, stocks, clientes
+  async admin_inscription_valider(sb, b) {
+    admin(b);
+    const { data: ins } = await sb.from('inscriptions').select('id,donnees,statut').eq('id', txt(b.id, 40)).single();
+    if (!ins || ins.statut !== 'nouvelle') throw new Erreur('Inscription introuvable ou déjà traitée.');
+    const d = ins.donnees;
+    const code = txt(b.code, 40).toUpperCase().replace(/\s+/g, '');
+    if (!code) throw new Erreur('Choisis un code de connexion.');
+    if (!/^\d{4,6}$/.test(String(b.pin))) throw new Erreur('PIN du responsable : 4 à 6 chiffres.');
+    const { data: e, error } = await sb.from('entreprises').insert({ code, nom: d.entreprise, modules: d.modules, whatsapp_patron: d.whatsapp || null, rapport: d.rapport,
+      couleur: couleurOk(b.couleur) ? b.couleur : '#3b4fe4', couleur2: couleurOk(b.couleur2) ? b.couleur2 : '#5667e7',
+      ...champsPaiement(b), installation_payee: false, abonnement_actif: false }).select(CHAMPS_ADMIN).single();
+    if (error) throw new Erreur(error.code === '23505' ? 'Ce code entreprise existe déjà.' : error.message);
+    const { data: bqs } = await sb.from('boutiques').insert(d.boutiques.map(nom => ({ nom, entreprise_id: e.id }))).select('id,nom');
+    const bq = nom => (bqs.find(x => x.nom.toLowerCase() === String(nom || '').toLowerCase()) || null)?.id || null;
+    await sb.from('utilisateurs').insert({ entreprise_id: e.id, nom: d.responsable, role: 'patron', pin_hash: hashPin(b.pin) });
+    // PIN des vendeurs : générés ici, renvoyés une seule fois à Mike pour les transmettre au responsable
+    const vendeurs = d.vendeurs.map(v => ({ ...v, pin: String(Math.floor(1000 + Math.random() * 9000)) }));
+    if (vendeurs.length) await sb.from('utilisateurs').insert(vendeurs.map(v => ({ entreprise_id: e.id, nom: v.nom, role: 'vendeur', boutique_id: bq(v.boutique) || (bqs.length === 1 ? bqs[0].id : null), pin_hash: hashPin(v.pin) })));
+    if (d.articles.length) {
+      const { data: arts } = await sb.from('articles').insert(d.articles.map(a => ({ entreprise_id: e.id, nom: a.nom, categorie: a.categorie || null, prix_vente: a.prix || 0 }))).select('id');
+      const stocks = (arts || []).map((a, i) => ({ article_id: a.id, boutique_id: bqs[0].id, quantite: d.articles[i].quantite || 0 }));
+      if (stocks.length) await sb.from('stocks').insert(stocks);
+    }
+    if (d.clientes.length) {
+      const vus = new Set(); const rows = d.clientes.filter(c => !vus.has(c.telephone) && vus.add(c.telephone)).map(c => ({ entreprise_id: e.id, nom: c.nom, telephone: c.telephone }));
+      for (let i = 0; i < rows.length; i += 500) await sb.from('clients').insert(rows.slice(i, i + 500));
+    }
+    await sb.from('inscriptions').update({ statut: 'validee', entreprise_id: e.id }).eq('id', ins.id);
+    notifierN8n('nouveau_client', e, { modules: d.modules, boutiques: d.boutiques, frais_installation: e.frais_installation, installation_payee: false });
+    const { id, ...ent } = e;
+    return { entreprise: { ...ent, patron_nom: d.responsable }, vendeurs: vendeurs.map(v => ({ nom: v.nom, boutique: v.boutique, pin: v.pin })),
+      resume: { boutiques: bqs.length, articles: d.articles.length, clientes: d.clientes.length } };
+  },
+
   // ---------- Factures (page publique /payer/<id>) ----------
   async admin_facture_creer(sb, b) {
     admin(b);

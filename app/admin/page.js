@@ -29,7 +29,8 @@ const wa = (tel, texte) => `https://wa.me/${String(tel || '').replace(/\D/g, '')
 const dateFr = d => d ? new Date(d + 'T12:00:00Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
 const MSG = {
   lienInstallation: (e, lien) => `Bonjour ${e.patron_nom || ''} 👋\n\nMerci de faire confiance à My automation 🙏\n\nVotre application ${e.nom} est prête à être activée.\n\n📄 Votre facture d'installation : ${e.frais_installation} $\n👉 ${lien}\n\nVous y trouverez les moyens de paiement (M-Pesa, Airtel Money, Orange Money…).\n\nDès que le paiement est confirmé, je vous envoie votre accès.\n\n— Mike, My automation`,
-  acces: (e, pin, url, recu) => `Paiement reçu ✅ Merci ${e.patron_nom || ''} !\n${recu ? `🧾 Votre reçu : ${recu}\n` : ''}\nVotre application ${e.nom} est activée 🎉\n\n📲 Lien : ${url}\n🏢 Code entreprise : ${e.code}\n👤 Nom : ${e.patron_nom || ''}\n🔐 PIN : ${pin || '[votre PIN]'}\n\nAstuce : ouvrez le lien dans Chrome, puis menu ⋮ → « Ajouter à l'écran d'accueil ».\n\nAbonnement : ${e.montant_mensuel} $/mois.\nProchain paiement le ${dateFr(e.abonnement_fin)}.\n\n— Mike, My automation`,
+  formulaire: (url) => `Bonjour 👋\n\nMerci pour votre intérêt pour My automation 🙏\n\nPour préparer votre application, remplissez ce formulaire (5 minutes) :\n👉 ${url}/inscription\n\nVos boutiques, vos articles et vos clientes seront déjà dans l'app le jour de l'installation.\n\n— Mike, My automation`,
+  acces: (e, pin, url, recu, vendeurs = []) => `Paiement reçu ✅ Merci ${e.patron_nom || ''} !\n${recu ? `🧾 Votre reçu : ${recu}\n` : ''}\nVotre application ${e.nom} est activée 🎉\n\n📲 Lien : ${url}\n🏢 Code entreprise : ${e.code}\n👤 Nom : ${e.patron_nom || ''}\n🔐 PIN : ${pin || '[votre PIN]'}\n\n${vendeurs.length ? `👥 Codes de vos vendeurs :\n${vendeurs.map(v => `• ${v.nom} : PIN ${v.pin}`).join('\n')}\n\n` : ''}Astuce : ouvrez le lien dans Chrome, puis menu ⋮ → « Ajouter à l'écran d'accueil ».\n\nAbonnement : ${e.montant_mensuel} $/mois.\nProchain paiement le ${dateFr(e.abonnement_fin)}.\n\n— Mike, My automation`,
   rappelMois: (e, lien) => `Bonjour ${e.patron_nom || ''} 👋\n\nVotre abonnement My automation se termine le ${dateFr(e.abonnement_fin)}.\n\nPour garder votre application active :\n📄 Facture : ${e.montant_mensuel} $\n👉 ${lien}\n\nVos données restent en sécurité.\n\n— Mike, My automation`,
   moisRecu: (e, recu) => `Paiement reçu ✅ Merci ${e.patron_nom || ''} !\n\nVotre abonnement My automation est prolongé jusqu'au ${dateFr(e.abonnement_fin)}.\n${recu ? `🧾 Votre reçu : ${recu}\n` : ''}\nBonnes ventes 💪\n\n— Mike, My automation`
 };
@@ -62,6 +63,9 @@ export default function Admin() {
   const [recu, setRecu] = useState('');         // lien du reçu après paiement
   const [pp, setPp] = useState({ nom: '', mpesa: '', airtel: '', orange: '', mtn: '', fondeka_install_10: '', fondeka_install_15: '', fondeka_install_20: '', fondeka_mensuel: '' }); const [msgP, setMsgP] = useState('');
   const [aVerifier, setAVerifier] = useState(null);
+  const [inscr, setInscr] = useState(null);     // inscriptions reçues par le formulaire
+  const [choix, setChoix] = useState({});       // { [id]: { code, pin, frais } }
+  const [vendeursPins, setVendeursPins] = useState([]);
   const [msg, setMsg] = useState(''); const [msg2, setMsg2] = useState('');
   const set = k => e => setF({ ...f, [k]: e.target.value });
   const tog = x => setF({ ...f, modules: f.modules.includes(x) ? f.modules.filter(y => y !== x) : [...f.modules, x] });
@@ -82,6 +86,28 @@ export default function Admin() {
   const sauverParam = async () => {
     setMsgP('…'); const j = await post('admin_parametres_ecrire', { ...pp, admin_key: cle });
     setMsgP(j.ok ? '✅ Moyens de paiement enregistrés.' : '❌ ' + j.erreur);
+  };
+  const suggCode = nom => (String(nom).normalize('NFD').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3) || 'CLI') + String(Math.floor(10 + Math.random() * 90));
+  const chargerInscr = async () => {
+    const j = await post('admin_inscriptions', { admin_key: cle });
+    if (!j.ok) return setMsg('❌ ' + j.erreur);
+    setInscr(j.inscriptions);
+    const c = {}; j.inscriptions.forEach(x => { c[x.id] = { code: suggCode(x.donnees.entreprise), pin: String(Math.floor(1000 + Math.random() * 9000)), frais: 15 }; });
+    setChoix(c);
+  };
+  const validerInscr = async x => {
+    const c = choix[x.id]; setMsg('…');
+    const j = await post('admin_inscription_valider', { id: x.id, code: c.code, pin: c.pin, frais_installation: c.frais, montant_mensuel: 10, admin_key: cle });
+    if (!j.ok) return setMsg('❌ ' + j.erreur);
+    setInscr(inscr.filter(y => y.id !== x.id));
+    setPin(c.pin); setVendeursPins(j.vendeurs); setEnvoi(null); setFactures({}); setRecu('');
+    afficher(j.entreprise); setM(mm => ({ ...mm, code: j.entreprise.code }));
+    setMsg(`✅ ${j.entreprise.nom} créé : ${j.resume.boutiques} boutique(s), ${j.resume.articles} article(s), ${j.resume.clientes} cliente(s). Code ${j.entreprise.code} · PIN ${c.pin}`);
+    setMsg2('Étape suivante : crée la facture d\'installation 👇');
+  };
+  const refuserInscr = async x => {
+    if (!confirm('Supprimer cette inscription de la liste ?')) return;
+    await post('admin_inscription_refuser', { id: x.id, admin_key: cle }); setInscr(inscr.filter(y => y.id !== x.id));
   };
   const verifier = async () => {
     const j = await post('admin_factures', { admin_key: cle });
@@ -105,7 +131,7 @@ export default function Admin() {
   };
   const charger = async (codeForce) => {
     const code = typeof codeForce === 'string' ? codeForce : m.code;
-    setMsg2('…'); setEnvoi(null); setPin(''); setFactures({}); setRecu('');
+    setMsg2('…'); setEnvoi(null); setPin(''); setFactures({}); setRecu(''); setVendeursPins([]);
     const j = await post('admin_lire', { code, admin_key: cle });
     if (!j.ok) return setMsg2('❌ ' + j.erreur);
     afficher(j.entreprise); setMsg2('Client chargé : ' + j.entreprise.nom);
@@ -135,6 +161,29 @@ export default function Admin() {
     <div className="login">
       <div className="haut"><div className="marque"><div className="logo img"><img src="/logo.png" alt="" /></div>My automation</div><h1>Espace administrateur</h1><p>Créer un client, encaisser (Fondeka), envoyer l'accès, gérer l'abonnement.</p></div><div className="corps" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="card"><label>Clé administrateur</label><input type="password" value={cle} onChange={e => setCle(e.target.value)} required /></div>
+
+
+      <div className="card">
+        <h2 style={{ marginBottom: 6 }}>📝 Formulaire d'inscription</h2>
+        <Envoyer tel="" texte={MSG.formulaire(url)}>📤 Envoyer le formulaire à un prospect</Envoyer>
+        <a href="/inscription" target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: 6, textAlign: 'center' }}>👁️ Voir le formulaire</a>
+        <button type="button" className="btn sec" style={{ marginTop: 10 }} onClick={chargerInscr}>Voir les nouvelles inscriptions</button>
+        {inscr && (inscr.length === 0 ? <p style={{ marginTop: 10 }}>Aucune nouvelle inscription.</p> : inscr.map(x => { const d = x.donnees, c = choix[x.id] || {}; const setC = k => e => setChoix({ ...choix, [x.id]: { ...c, [k]: e.target ? e.target.value : e } }); return (
+          <div key={x.id} style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#f3f6fb' }}>
+            <b>{d.entreprise}</b>{d.activite ? ` · ${d.activite}` : ''}<br />
+            👤 {d.responsable} · 📱 {d.whatsapp}<br />
+            🏬 {d.boutiques.length} boutique(s) · 👥 {d.vendeurs.length} vendeur(s) · 📦 {d.articles.length} article(s) · 💬 {d.clientes.length} cliente(s)<br />
+            Rapport : {d.rapport === 'les_deux' ? 'soir + semaine' : d.rapport}
+            <label>Code de connexion</label><input value={c.code || ''} onChange={setC('code')} />
+            <label>PIN du responsable</label><input value={c.pin || ''} onChange={setC('pin')} inputMode="numeric" maxLength={6} />
+            <label>Frais d'installation</label>
+            <div className="chips">{[10, 15, 20].map(n => <button type="button" key={n} className={Number(c.frais) === n ? 'on' : ''} onClick={() => setC('frais')(n)}>{n} $</button>)}</div>
+            <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => validerInscr(x)}>✅ Créer ce client</button>
+            <button type="button" className="btn rouge petit" style={{ marginTop: 8 }} onClick={() => refuserInscr(x)}>Retirer</button>
+          </div>); }))}
+        {inscr && msg && <p style={{ marginTop: 10, fontWeight: 700 }}>{msg}</p>}
+        {vendeursPins.length > 0 && <p style={{ marginTop: 10 }}>👥 PIN vendeurs (envoyés avec l'accès) : {vendeursPins.map(v => `${v.nom} ${v.pin}`).join(' · ')}</p>}
+      </div>
 
       <div className="card">
         <h2 style={{ marginBottom: 6 }}>💰 Paiements à vérifier</h2>
@@ -182,7 +231,7 @@ export default function Admin() {
             <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => paiement('installation')}>✅ Paiement installation reçu → activer l'app</button>
           </>}
 
-          {(envoi === 'installation' || (ent.installation_payee && envoi !== 'mensuel')) && <Envoyer tel={ent.whatsapp_patron} texte={MSG.acces(ent, pin, url, envoi === 'installation' ? recu : '')}>📤 Envoyer l'accès à l'app</Envoyer>}
+          {(envoi === 'installation' || (ent.installation_payee && envoi !== 'mensuel')) && <Envoyer tel={ent.whatsapp_patron} texte={MSG.acces(ent, pin, url, envoi === 'installation' ? recu : '', vendeursPins)}>📤 Envoyer l'accès à l'app</Envoyer>}
 
           {ent.installation_payee && <>
             {!factures.mensuel ? <button type="button" className="btn sec" style={{ marginTop: 10 }} onClick={() => creerFacture('mensuel')}>📄 Créer la facture du mois ({ent.montant_mensuel} $)</button>
