@@ -146,8 +146,8 @@ alter table clients enable row level security;
 alter table annonces enable row level security;
 
 -- Abonnement (piloté par n8n / My automation) et couleurs de l'app
-alter table entreprises add column if not exists couleur text not null default '#0a3d91';
-alter table entreprises add column if not exists couleur2 text not null default '#1565d8';
+alter table entreprises add column if not exists couleur text not null default '#3b4fe4';
+alter table entreprises add column if not exists couleur2 text not null default '#5667e7';
 alter table entreprises add column if not exists abonnement_actif boolean not null default true;
 alter table entreprises add column if not exists abonnement_fin date;
 

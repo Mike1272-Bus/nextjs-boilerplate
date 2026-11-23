@@ -1,7 +1,7 @@
 /* My automation : système visuel « comptoir »
    --bleu / --bleu2 = couleurs choisies par My automation pour chaque client */
 :root{
-  --bleu:#0a3d91;--bleu2:#1565d8;
+  --bleu:#3b4fe4;--bleu2:#5667e7;
   --fond:#eef1f4;--surface:#fff;--encre:#14213d;--texte:#14213d;--gris:#5e6b7e;--ligne:#dce2ea;
   --vert:#138a4b;--rouge:#b42318;--orange:#c2410c;
   --teinte:color-mix(in srgb,var(--bleu) 9%,#fff);
@@ -126,3 +126,5 @@ input::placeholder{color:#97a2b3}
 /* Compte rendu imprimable (PDF) */
 @media print{.noprint,.bar>button,.toast{display:none!important}body,.app{background:#fff}.card{box-shadow:none;break-inside:avoid}.bar{position:static;backdrop-filter:none}}
 .kpi span{display:block;line-height:1.3;margin-top:2px}
+
+.logo.img{background:none;padding:0;overflow:hidden}.logo.img img{width:100%;height:100%;object-fit:cover;display:block}

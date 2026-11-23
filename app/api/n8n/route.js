@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // Actions :
 //  { "action": "clients" }  → liste des entreprises + état de l'abonnement + ventes des 30 derniers jours
 //  { "action": "abonnement", "code": "KAPA4", "actif": true, "fin": "2026-12-31" }  ou  "jours": 30 (prolonge à partir d'aujourd'hui ou de la fin actuelle)
-//  { "action": "couleurs", "code": "KAPA4", "couleur": "#0a3d91", "couleur2": "#1565d8" }
+//  { "action": "couleurs", "code": "KAPA4", "couleur": "#3b4fe4", "couleur2": "#5667e7" }
 const ajouterJours = (base, n) => { const d = new Date(base + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
 export async function POST(req) {

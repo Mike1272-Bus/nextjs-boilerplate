@@ -271,7 +271,7 @@ const actions = {
     if (!code || !txt(b.nom) || !txt(b.patron_nom) || !/^\d{4,6}$/.test(String(b.patron_pin))) throw new Erreur('Code, nom, responsable et PIN (4 à 6 chiffres) obligatoires.');
     const modules = Array.isArray(b.modules) && b.modules.length ? b.modules : ['stock', 'arrivage'];
     const { data: e, error } = await sb.from('entreprises').insert({ code, nom: txt(b.nom), modules, whatsapp_patron: normTel(b.whatsapp) || null,
-      couleur: couleurOk(b.couleur) ? b.couleur : '#0a3d91', couleur2: couleurOk(b.couleur2) ? b.couleur2 : '#1565d8',
+      couleur: couleurOk(b.couleur) ? b.couleur : '#3b4fe4', couleur2: couleurOk(b.couleur2) ? b.couleur2 : '#5667e7',
       abonnement_fin: /^\d{4}-\d{2}-\d{2}$/.test(b.abonnement_fin || '') ? b.abonnement_fin : null }).select('id').single();
     if (error) throw new Erreur(error.code === '23505' ? 'Ce code entreprise existe déjà.' : error.message);
     const noms = String(b.boutiques || 'Boutique 1').split(',').map(s => s.trim()).filter(Boolean);

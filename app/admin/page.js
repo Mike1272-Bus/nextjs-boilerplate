@@ -5,7 +5,7 @@ const post = async (action, body) => {
   const r = await fetch('/api/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return r.json().catch(() => ({ ok: false, erreur: 'Pas de connexion.' }));
 };
-const PALETTE = ['#0a3d91', '#1565d8', '#0f766e', '#16a34a', '#7c3aed', '#be185d', '#c2410c', '#b45309', '#111827', '#dc2626'];
+const PALETTE = ['#3b4fe4', '#5667e7', '#0f766e', '#16a34a', '#7c3aed', '#be185d', '#c2410c', '#b45309', '#111827', '#dc2626'];
 
 function Couleurs({ c1, c2, onChange }) {
   return (
@@ -26,8 +26,8 @@ function Couleurs({ c1, c2, onChange }) {
 
 export default function Admin() {
   const [cle, setCle] = useState('');
-  const [f, setF] = useState({ code: '', nom: '', patron_nom: '', patron_pin: '', whatsapp: '', boutiques: 'Boutique 1', modules: ['stock', 'arrivage'], couleur: '#0a3d91', couleur2: '#1565d8', abonnement_fin: '' });
-  const [m, setM] = useState({ code: '', couleur: '#0a3d91', couleur2: '#1565d8', abonnement_actif: true, abonnement_fin: '' });
+  const [f, setF] = useState({ code: '', nom: '', patron_nom: '', patron_pin: '', whatsapp: '', boutiques: 'Boutique 1', modules: ['stock', 'arrivage'], couleur: '#3b4fe4', couleur2: '#5667e7', abonnement_fin: '' });
+  const [m, setM] = useState({ code: '', couleur: '#3b4fe4', couleur2: '#5667e7', abonnement_actif: true, abonnement_fin: '' });
   const [msg, setMsg] = useState(''); const [msg2, setMsg2] = useState('');
   const set = k => e => setF({ ...f, [k]: e.target.value });
   const tog = x => setF({ ...f, modules: f.modules.includes(x) ? f.modules.filter(y => y !== x) : [...f.modules, x] });
@@ -53,7 +53,7 @@ export default function Admin() {
 
   return (
     <div className="login">
-      <div className="head"><div className="logo">M</div><h1>Espace My automation</h1><p className="muted">Créer un client, choisir ses couleurs, gérer son abonnement.</p></div>
+      <div className="head"><div className="logo img"><img src="/logo.png" alt="My automation" /></div><h1>Espace My automation</h1><p className="muted">Créer un client, choisir ses couleurs, gérer son abonnement.</p></div>
       <div className="card"><label>Clé administrateur</label><input type="password" value={cle} onChange={e => setCle(e.target.value)} required /></div>
 
       <form className="card" onSubmit={creer}>

@@ -14,7 +14,7 @@ function Login({ onOk }) {
   };
   return (
     <form className="login" onSubmit={go}>
-      <div className="head"><div className="logo">M</div><h1>My automation</h1><p className="muted">Votre stock, vos ventes et vos clients, depuis votre téléphone.</p></div>
+      <div className="head"><div className="logo img"><img src="/logo.png" alt="My automation" /></div><h1>My automation</h1><p className="muted">Votre stock, vos ventes et vos clients, depuis votre téléphone.</p></div>
       <div className="card">
         <label>Code de l'entreprise</label><input value={f.code} onChange={e => setF({ ...f, code: e.target.value })} placeholder="ex : KAPA4" autoCapitalize="characters" required />
         <label>Votre nom</label><input value={f.nom} onChange={e => setF({ ...f, nom: e.target.value })} placeholder="ex : Patrick" required />

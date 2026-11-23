@@ -4,6 +4,6 @@ export const runtime = 'edge';
 export function GET(_, { params }) {
   const t = params.t === '512' ? 512 : 192;
   return new ImageResponse(
-    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a3d91', color: '#fff', fontSize: t * 0.58, fontWeight: 800 }}>M</div>,
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#3b4fe4', color: '#fff', fontSize: t * 0.58, fontWeight: 800 }}>M</div>,
     { width: t, height: t, headers: { 'Cache-Control': 'public, max-age=604800, immutable' } });
 }

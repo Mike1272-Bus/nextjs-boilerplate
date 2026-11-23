@@ -1,5 +1,5 @@
-const C = 'myauto-v1';
-self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(['/', '/manifest.json', '/api/icone/192']))); });
+const C = 'myauto-v3';
+self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(['/', '/manifest.json', '/logo-192.png']))); });
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
