@@ -37,7 +37,8 @@ async function boutiqueAutorisee(sb, u, e, boutiqueId) {
 
 const actions = {
   async login(sb, b) {
-    const { data: e } = await sb.from('entreprises').select('id,nom').ilike('code', txt(b.code, 40)).single();
+    const { data: e, error: err } = await sb.from('entreprises').select('id,nom').ilike('code', txt(b.code, 40)).maybeSingle();
+    if (err) throw new Erreur('Base de données pas prête (' + (String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/^https?:\/\//, '').split('.')[0]) + ') : ' + err.message, 500);
     if (!e) throw new Erreur('Code entreprise inconnu.');
     const { data: users } = await sb.from('utilisateurs').select('id,nom,pin_hash,actif').eq('entreprise_id', e.id).ilike('nom', txt(b.nom, 80));
     const u = (users || []).find(x => x.actif && checkPin(b.pin, x.pin_hash));
