@@ -34,6 +34,12 @@ const aujourdhui = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0
 const ajouterJours = (base, n) => { const d = new Date(base + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const CHAMPS_ADMIN = 'id,code,nom,whatsapp_patron,couleur,couleur2,abonnement_actif,abonnement_fin,frais_installation,montant_mensuel,lien_paiement_installation,lien_paiement_mensuel,installation_payee,installation_payee_le';
 const lienOk = v => /^https?:\/\/\S+$/i.test(String(v || '').trim());
+const OPERATEURS = ['mpesa', 'airtel', 'orange', 'mtn'];
+const numFacture = f => `MA-${new Date(f.created_at).getUTCFullYear()}-${String(f.numero).padStart(4, '0')}`;
+async function lireParametres(sb) {
+  const { data } = await sb.from('parametres').select('valeur').eq('cle', 'paiement').maybeSingle();
+  return data?.valeur || {};
+}
 function champsPaiement(b) {
   const m = {};
   const fi = num(b.frais_installation), mm = num(b.montant_mensuel);
@@ -347,9 +353,73 @@ const actions = {
       if (!/^\d{4,6}$/.test(String(b.pin))) throw new Erreur('PIN : 4 à 6 chiffres.');
       if (p?.[0]) await sb.from('utilisateurs').update({ pin_hash: hashPin(b.pin) }).eq('id', p[0].id);
     }
+    // Facture correspondante → payée (elle devient le reçu)
+    const { data: fs } = await sb.from('factures').select('id').eq('entreprise_id', e.id).eq('type', type).in('statut', ['en_attente', 'declaree']).order('created_at', { ascending: false }).limit(1);
+    let facture_id = fs?.[0]?.id || null;
+    if (facture_id) await sb.from('factures').update({ statut: 'payee', payee_le: new Date().toISOString() }).eq('id', facture_id);
     notifierN8n('paiement_recu', data, { type, montant: type === 'installation' ? data.frais_installation : data.montant_mensuel, fin: data.abonnement_fin });
     const { id, ...ent } = data;
-    return { type, entreprise: { ...ent, patron_nom: p?.[0]?.nom || '' } };
+    return { type, facture_id, entreprise: { ...ent, patron_nom: p?.[0]?.nom || '' } };
+  },
+
+  // ---------- Factures (page publique /payer/<id>) ----------
+  async admin_facture_creer(sb, b) {
+    admin(b);
+    const { data: e } = await sb.from('entreprises').select(CHAMPS_ADMIN).ilike('code', txt(b.code, 40)).single();
+    if (!e) throw new Erreur('Code entreprise inconnu.');
+    const type = b.type === 'installation' ? 'installation' : 'mensuel';
+    // Une facture non payée du même type existe déjà → on la réutilise
+    const { data: ex } = await sb.from('factures').select('id').eq('entreprise_id', e.id).eq('type', type).in('statut', ['en_attente', 'declaree']).limit(1);
+    if (ex?.length) return { facture_id: ex[0].id, existante: true };
+    const auj = aujourdhui();
+    const debut = e.abonnement_fin && e.abonnement_fin > auj ? e.abonnement_fin : auj;
+    const fr = d => new Date(d + 'T12:00:00Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const libelle = type === 'installation' ? `Installation de l'application ${e.nom} + 1er mois`
+      : `Abonnement My automation du ${fr(debut)} au ${fr(ajouterJours(debut, 30))}`;
+    const montant = type === 'installation' ? e.frais_installation : e.montant_mensuel;
+    const { data: f, error } = await sb.from('factures').insert({ entreprise_id: e.id, type, libelle, montant }).select('id').single();
+    if (error) throw new Erreur(error.message);
+    return { facture_id: f.id };
+  },
+  async admin_factures(sb, b) {
+    admin(b);
+    const { data } = await sb.from('factures').select('id,numero,type,libelle,montant,statut,operateur,transaction,telephone,declaree_le,created_at,entreprises(code,nom)')
+      .in('statut', ['declaree', 'en_attente']).order('created_at', { ascending: false }).limit(50);
+    return { factures: (data || []).map(f => ({ ...f, numero: numFacture(f), code: f.entreprises?.code, nom: f.entreprises?.nom })) };
+  },
+  async admin_parametres_lire(sb, b) { admin(b); return { paiement: await lireParametres(sb) }; },
+  async admin_parametres_ecrire(sb, b) {
+    admin(b);
+    const v = { nom: txt(b.nom, 80), whatsapp: normTel(b.whatsapp) || '' };
+    for (const o of OPERATEURS) v[o] = txt(b[o], 20);
+    await sb.from('parametres').upsert({ cle: 'paiement', valeur: v, updated_at: new Date().toISOString() });
+    return { paiement: v };
+  },
+  async facture_lire(sb, b) {
+    const id = txt(b.id, 40);
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Erreur('Facture introuvable.', 404);
+    const { data: f } = await sb.from('factures').select('id,numero,type,libelle,montant,statut,operateur,payee_le,declaree_le,created_at,entreprise_id').eq('id', id).maybeSingle();
+    if (!f || f.statut === 'annulee') throw new Erreur('Facture introuvable.', 404);
+    const { data: e } = await sb.from('entreprises').select('code,nom,lien_paiement_installation,lien_paiement_mensuel').eq('id', f.entreprise_id).single();
+    const p = await lireParametres(sb);
+    const moyens = OPERATEURS.filter(o => p[o]).map(o => ({ id: o, numero: p[o] }));
+    const carte = f.type === 'installation' ? e?.lien_paiement_installation : e?.lien_paiement_mensuel;
+    const { entreprise_id, ...ff } = f;
+    return { facture: { ...ff, numero: numFacture(f), reference: `${e?.code}-${f.numero}` }, client: e?.nom, beneficiaire: p.nom || 'My automation', moyens, carte: carte || null };
+  },
+  async facture_declarer(sb, b) {
+    const id = txt(b.id, 40);
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Erreur('Facture introuvable.', 404);
+    if (!OPERATEURS.concat('carte').includes(b.operateur)) throw new Erreur('Choisissez comment vous avez payé.');
+    const { data: f } = await sb.from('factures').select('id,numero,montant,type,statut,entreprise_id').eq('id', id).maybeSingle();
+    if (!f) throw new Erreur('Facture introuvable.', 404);
+    if (f.statut === 'payee') return { statut: 'payee' };
+    if (f.statut !== 'en_attente' && f.statut !== 'declaree') throw new Erreur('Facture introuvable.', 404);
+    await sb.from('factures').update({ statut: 'declaree', operateur: b.operateur, transaction: txt(b.transaction, 60) || null,
+      telephone: normTel(b.telephone) || null, declaree_le: new Date().toISOString() }).eq('id', id);
+    const { data: e } = await sb.from('entreprises').select('code,nom,whatsapp_patron').eq('id', f.entreprise_id).single();
+    notifierN8n('paiement_declare', e, { facture: `MA-${f.numero}`, type: f.type, montant: f.montant, operateur: b.operateur, transaction: txt(b.transaction, 60) });
+    return { statut: 'declaree' };
   }
 };
 

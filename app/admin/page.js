@@ -28,10 +28,10 @@ function Couleurs({ c1, c2, onChange }) {
 const wa = (tel, texte) => `https://wa.me/${String(tel || '').replace(/\D/g, '')}?text=${encodeURIComponent(texte)}`;
 const dateFr = d => d ? new Date(d + 'T12:00:00Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
 const MSG = {
-  lienInstallation: (e) => `Bonjour ${e.patron_nom || ''} 👋\n\nMerci de faire confiance à My automation 🙏\n\nVotre application ${e.nom} est prête à être activée.\n\n💳 Frais d'installation : ${e.frais_installation} $\n👉 Payez ici : ${e.lien_paiement_installation || '[lien Fondeka]'}\n\nDès que je reçois le paiement, je vous envoie votre accès.\n\n— Mike, My automation`,
-  acces: (e, pin, url) => `Paiement reçu ✅ Merci ${e.patron_nom || ''} !\n\nVotre application ${e.nom} est activée 🎉\n\n📲 Lien : ${url}\n🏢 Code entreprise : ${e.code}\n👤 Nom : ${e.patron_nom || ''}\n🔐 PIN : ${pin || '[votre PIN]'}\n\nAstuce : ouvrez le lien dans Chrome, puis menu ⋮ → « Ajouter à l'écran d'accueil ».\n\nAbonnement : ${e.montant_mensuel} $/mois.\nProchain paiement le ${dateFr(e.abonnement_fin)}.\n\n— Mike, My automation`,
-  rappelMois: (e) => `Bonjour ${e.patron_nom || ''} 👋\n\nVotre abonnement My automation se termine le ${dateFr(e.abonnement_fin)}.\n\nPour garder votre application active :\n💳 ${e.montant_mensuel} $\n👉 ${e.lien_paiement_mensuel || '[lien Fondeka]'}\n\nVos données restent en sécurité.\n\n— Mike, My automation`,
-  moisRecu: (e) => `Paiement reçu ✅ Merci ${e.patron_nom || ''} !\n\nVotre abonnement My automation est prolongé jusqu'au ${dateFr(e.abonnement_fin)}.\n\nBonnes ventes 💪\n\n— Mike, My automation`
+  lienInstallation: (e, lien) => `Bonjour ${e.patron_nom || ''} 👋\n\nMerci de faire confiance à My automation 🙏\n\nVotre application ${e.nom} est prête à être activée.\n\n📄 Votre facture d'installation : ${e.frais_installation} $\n👉 ${lien}\n\nVous y trouverez les moyens de paiement (M-Pesa, Airtel Money, Orange Money…).\n\nDès que le paiement est confirmé, je vous envoie votre accès.\n\n— Mike, My automation`,
+  acces: (e, pin, url, recu) => `Paiement reçu ✅ Merci ${e.patron_nom || ''} !\n${recu ? `🧾 Votre reçu : ${recu}\n` : ''}\nVotre application ${e.nom} est activée 🎉\n\n📲 Lien : ${url}\n🏢 Code entreprise : ${e.code}\n👤 Nom : ${e.patron_nom || ''}\n🔐 PIN : ${pin || '[votre PIN]'}\n\nAstuce : ouvrez le lien dans Chrome, puis menu ⋮ → « Ajouter à l'écran d'accueil ».\n\nAbonnement : ${e.montant_mensuel} $/mois.\nProchain paiement le ${dateFr(e.abonnement_fin)}.\n\n— Mike, My automation`,
+  rappelMois: (e, lien) => `Bonjour ${e.patron_nom || ''} 👋\n\nVotre abonnement My automation se termine le ${dateFr(e.abonnement_fin)}.\n\nPour garder votre application active :\n📄 Facture : ${e.montant_mensuel} $\n👉 ${lien}\n\nVos données restent en sécurité.\n\n— Mike, My automation`,
+  moisRecu: (e, recu) => `Paiement reçu ✅ Merci ${e.patron_nom || ''} !\n\nVotre abonnement My automation est prolongé jusqu'au ${dateFr(e.abonnement_fin)}.\n${recu ? `🧾 Votre reçu : ${recu}\n` : ''}\nBonnes ventes 💪\n\n— Mike, My automation`
 };
 const Envoyer = ({ tel, texte, children }) => <a className="btn sec" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 8 }} href={wa(tel, texte)} target="_blank" rel="noreferrer">{children}</a>;
 
@@ -58,10 +58,36 @@ export default function Admin() {
   const [ent, setEnt] = useState(null);        // client chargé (suivi du paiement)
   const [pin, setPin] = useState('');          // PIN à envoyer avec l'accès
   const [envoi, setEnvoi] = useState(null);    // message prêt après un paiement
+  const [factures, setFactures] = useState({}); // { installation: id, mensuel: id } factures créées
+  const [recu, setRecu] = useState('');         // lien du reçu après paiement
+  const [pp, setPp] = useState({ nom: '', mpesa: '', airtel: '', orange: '', mtn: '' }); const [msgP, setMsgP] = useState('');
+  const [aVerifier, setAVerifier] = useState(null);
   const [msg, setMsg] = useState(''); const [msg2, setMsg2] = useState('');
   const set = k => e => setF({ ...f, [k]: e.target.value });
   const tog = x => setF({ ...f, modules: f.modules.includes(x) ? f.modules.filter(y => y !== x) : [...f.modules, x] });
   const url = typeof window !== 'undefined' ? window.location.origin : '';
+  const lienF = id => `${url}/payer/${id}`;
+  const creerFacture = async type => {
+    setMsg2('…');
+    const j = await post('admin_facture_creer', { code: ent.code, type, admin_key: cle });
+    if (!j.ok) return setMsg2('❌ ' + j.erreur);
+    setFactures({ ...factures, [type]: j.facture_id });
+    setMsg2(j.existante ? 'Facture déjà créée (non payée) : tu peux la renvoyer 👇' : '✅ Facture créée. Envoie-la 👇');
+  };
+  const chargerParam = async () => {
+    setMsgP('…'); const j = await post('admin_parametres_lire', { admin_key: cle });
+    if (!j.ok) return setMsgP('❌ ' + j.erreur);
+    setPp({ nom: '', mpesa: '', airtel: '', orange: '', mtn: '', ...j.paiement }); setMsgP('');
+  };
+  const sauverParam = async () => {
+    setMsgP('…'); const j = await post('admin_parametres_ecrire', { ...pp, admin_key: cle });
+    setMsgP(j.ok ? '✅ Moyens de paiement enregistrés.' : '❌ ' + j.erreur);
+  };
+  const verifier = async () => {
+    const j = await post('admin_factures', { admin_key: cle });
+    if (!j.ok) return setMsg2('❌ ' + j.erreur);
+    setAVerifier(j.factures);
+  };
 
   const afficher = (e) => {
     setEnt(e);
@@ -74,12 +100,13 @@ export default function Admin() {
     const j = await post('admin_creer', { ...f, admin_key: cle });
     if (!j.ok) return setMsg('❌ ' + j.erreur);
     setMsg(`✅ Entreprise créée. Code : ${j.code} · Responsable : ${f.patron_nom} · PIN : ${f.patron_pin}`);
-    setPin(f.patron_pin); setEnvoi(null); afficher(j.entreprise);
+    setPin(f.patron_pin); setEnvoi(null); setFactures({}); setRecu(''); afficher(j.entreprise);
     setMsg2(j.entreprise.installation_payee ? 'Installation déjà payée : envoie l\'accès ci-dessous.' : 'Étape suivante : envoie le lien de paiement ci-dessous 👇');
   };
-  const charger = async () => {
-    setMsg2('…'); setEnvoi(null); setPin('');
-    const j = await post('admin_lire', { code: m.code, admin_key: cle });
+  const charger = async (codeForce) => {
+    const code = typeof codeForce === 'string' ? codeForce : m.code;
+    setMsg2('…'); setEnvoi(null); setPin(''); setFactures({}); setRecu('');
+    const j = await post('admin_lire', { code, admin_key: cle });
     if (!j.ok) return setMsg2('❌ ' + j.erreur);
     afficher(j.entreprise); setMsg2('Client chargé : ' + j.entreprise.nom);
   };
@@ -95,7 +122,8 @@ export default function Admin() {
     setMsg2('…');
     const j = await post('admin_paiement', { code: ent.code, type, pin: type === 'installation' ? pin : '', admin_key: cle });
     if (!j.ok) return setMsg2('❌ ' + j.erreur);
-    afficher(j.entreprise); setEnvoi(type);
+    afficher(j.entreprise); setEnvoi(type); setRecu(j.facture_id ? lienF(j.facture_id) : '');
+    setFactures({ ...factures, [type]: undefined });
     setMsg2(type === 'installation' ? `✅ App activée jusqu'au ${j.entreprise.abonnement_fin}. Envoie l'accès 👇` : `✅ Prolongé jusqu'au ${j.entreprise.abonnement_fin}. Envoie la confirmation 👇`);
   };
 
@@ -107,6 +135,17 @@ export default function Admin() {
     <div className="login">
       <div className="haut"><div className="marque"><div className="logo img"><img src="/logo.png" alt="" /></div>My automation</div><h1>Espace administrateur</h1><p>Créer un client, encaisser (Fondeka), envoyer l'accès, gérer l'abonnement.</p></div><div className="corps" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="card"><label>Clé administrateur</label><input type="password" value={cle} onChange={e => setCle(e.target.value)} required /></div>
+
+      <div className="card">
+        <h2 style={{ marginBottom: 6 }}>💰 Paiements à vérifier</h2>
+        <button type="button" className="btn sec" onClick={verifier}>Voir les factures en attente</button>
+        {aVerifier && (aVerifier.length === 0 ? <p style={{ marginTop: 10 }}>Rien à vérifier 👌</p> : aVerifier.map(x => (
+          <div key={x.id} style={{ marginTop: 10, padding: 10, borderRadius: 12, background: x.statut === 'declaree' ? '#fff7ed' : '#f3f6fb' }}>
+            <b>{x.nom}</b> · {Number(x.montant)} $ · {x.type === 'installation' ? 'Installation' : 'Mois'}<br />
+            {x.statut === 'declaree' ? `⏳ Signalé payé via ${x.operateur}${x.telephone ? ' · ' + x.telephone : ''}${x.transaction ? ' · code ' + x.transaction : ''}` : 'En attente de paiement'}
+            <button type="button" className="btn petit" style={{ marginTop: 8 }} onClick={() => { setM({ ...m, code: x.code }); charger(x.code); }}>Ouvrir {x.code}</button>
+          </div>)))}
+      </div>
 
       <form className="card" onSubmit={creer}>
         <h2 style={{ marginBottom: 6 }}>1. Nouveau client</h2>
@@ -136,17 +175,20 @@ export default function Admin() {
           <p style={{ marginTop: 4 }}>Installation {ent.frais_installation} $ · Abonnement {ent.montant_mensuel} $/mois</p>
 
           {!ent.installation_payee && <>
-            <Envoyer tel={ent.whatsapp_patron} texte={MSG.lienInstallation(ent)}>📤 Envoyer le lien de paiement ({ent.frais_installation} $)</Envoyer>
+            {!factures.installation ? <button type="button" className="btn sec" style={{ marginTop: 10 }} onClick={() => creerFacture('installation')}>📄 Créer la facture d'installation ({ent.frais_installation} $)</button>
+              : <><Envoyer tel={ent.whatsapp_patron} texte={MSG.lienInstallation(ent, lienF(factures.installation))}>📤 Envoyer la facture sur WhatsApp</Envoyer>
+                <a href={lienF(factures.installation)} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: 6, textAlign: 'center' }}>👁️ Voir la facture</a></>}
             <label>PIN à envoyer avec l'accès</label><input value={pin} onChange={e => setPin(e.target.value)} inputMode="numeric" maxLength={6} placeholder="Laisse vide pour garder le PIN actuel" />
             <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => paiement('installation')}>✅ Paiement installation reçu → activer l'app</button>
           </>}
 
-          {(envoi === 'installation' || (ent.installation_payee && envoi !== 'mensuel')) && <Envoyer tel={ent.whatsapp_patron} texte={MSG.acces(ent, pin, url)}>📤 Envoyer l'accès à l'app</Envoyer>}
+          {(envoi === 'installation' || (ent.installation_payee && envoi !== 'mensuel')) && <Envoyer tel={ent.whatsapp_patron} texte={MSG.acces(ent, pin, url, envoi === 'installation' ? recu : '')}>📤 Envoyer l'accès à l'app</Envoyer>}
 
           {ent.installation_payee && <>
-            <Envoyer tel={ent.whatsapp_patron} texte={MSG.rappelMois(ent)}>📤 Rappel abonnement ({ent.montant_mensuel} $)</Envoyer>
+            {!factures.mensuel ? <button type="button" className="btn sec" style={{ marginTop: 10 }} onClick={() => creerFacture('mensuel')}>📄 Créer la facture du mois ({ent.montant_mensuel} $)</button>
+              : <Envoyer tel={ent.whatsapp_patron} texte={MSG.rappelMois(ent, lienF(factures.mensuel))}>📤 Envoyer la facture du mois</Envoyer>}
             <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => paiement('mensuel')}>✅ Mois payé → +30 jours</button>
-            {envoi === 'mensuel' && <Envoyer tel={ent.whatsapp_patron} texte={MSG.moisRecu(ent)}>📤 Envoyer la confirmation</Envoyer>}
+            {envoi === 'mensuel' && <Envoyer tel={ent.whatsapp_patron} texte={MSG.moisRecu(ent, recu)}>📤 Envoyer la confirmation</Envoyer>}
           </>}
           {!ent.whatsapp_patron && <p style={{ marginTop: 8 }}>⚠️ Pas de WhatsApp enregistré : WhatsApp te demandera de choisir le contact.</p>}
         </>}
@@ -161,6 +203,17 @@ export default function Admin() {
         <Couleurs c1={m.couleur} c2={m.couleur2} onChange={(a, b) => setM({ ...m, couleur: a, couleur2: b })} />
         <div style={{ height: 14 }} /><button className="btn">Enregistrer</button>
       </form>}
+
+      <div className="card">
+        <h2 style={{ marginBottom: 6 }}>⚙️ Mes moyens de paiement</h2>
+        <p>Affichés sur toutes les factures. Laisse vide ceux que tu n'utilises pas.</p>
+        <button type="button" className="btn sec" style={{ marginTop: 8 }} onClick={chargerParam}>Charger</button>
+        <label>Nom affiché quand on te paie</label><input value={pp.nom} onChange={e => setPp({ ...pp, nom: e.target.value })} placeholder="ex : My automation" />
+        {[['mpesa', 'M-Pesa'], ['airtel', 'Airtel Money'], ['orange', 'Orange Money'], ['mtn', 'MTN MoMo']].map(([k, l]) =>
+          <div key={k}><label>Numéro {l}</label><input value={pp[k]} onChange={e => setPp({ ...pp, [k]: e.target.value })} inputMode="tel" /></div>)}
+        <div style={{ height: 12 }} /><button type="button" className="btn" onClick={sauverParam}>Enregistrer</button>
+        {msgP && <p style={{ marginTop: 10, fontWeight: 700 }}>{msgP}</p>}
+      </div>
     </div></div>
   );
 }
