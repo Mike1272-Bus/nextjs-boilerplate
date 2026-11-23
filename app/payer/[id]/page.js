@@ -66,7 +66,7 @@ export default function Payer({ params }) {
             {moyen && <div style={{ marginTop: 14 }}>
               <p>1. Envoyez <b>{Number(f.montant)} $</b> par {NOMS[moyen.id]} au :</p>
               <button type="button" className="btn sec" style={{ marginTop: 8, fontSize: 22, letterSpacing: '.04em' }} onClick={() => copier(moyen.numero)}>{moyen.numero} {copie === moyen.numero ? '✓ copié' : '📋'}</button>
-              <p style={{ marginTop: 6 }}>Nom affiché : <b>{d.beneficiaire}</b></p>
+              <p style={{ marginTop: 6 }}>Nom qui s'affichera à la confirmation : <b>{d.beneficiaire}</b></p>
               <p style={{ marginTop: 10 }}>2. Dans le message du transfert, indiquez la référence :</p>
               <button type="button" className="btn sec" style={{ marginTop: 8 }} onClick={() => copier(f.reference)}>{f.reference} {copie === f.reference ? '✓ copié' : '📋'}</button>
             </div>}

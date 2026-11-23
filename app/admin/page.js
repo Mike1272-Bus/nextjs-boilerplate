@@ -208,7 +208,7 @@ export default function Admin() {
         <h2 style={{ marginBottom: 6 }}>⚙️ Mes moyens de paiement</h2>
         <p>Affichés sur toutes les factures. Laisse vide ceux que tu n'utilises pas.</p>
         <button type="button" className="btn sec" style={{ marginTop: 8 }} onClick={chargerParam}>Charger</button>
-        <label>Nom affiché quand on te paie</label><input value={pp.nom} onChange={e => setPp({ ...pp, nom: e.target.value })} placeholder="ex : My automation" />
+        <label>Nom qui s'affiche quand on te paie (exactement comme sur la confirmation M-Pesa)</label><input value={pp.nom} onChange={e => setPp({ ...pp, nom: e.target.value })} placeholder="ex : Michée Tambwe (fondateur de My automation)" />
         {[['mpesa', 'M-Pesa'], ['airtel', 'Airtel Money'], ['orange', 'Orange Money'], ['mtn', 'MTN MoMo']].map(([k, l]) =>
           <div key={k}><label>Numéro {l}</label><input value={pp[k]} onChange={e => setPp({ ...pp, [k]: e.target.value })} inputMode="tel" /></div>)}
         <div style={{ height: 12 }} /><button type="button" className="btn" onClick={sauverParam}>Enregistrer</button>
