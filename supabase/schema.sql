@@ -150,3 +150,7 @@ alter table entreprises add column if not exists couleur text not null default '
 alter table entreprises add column if not exists couleur2 text not null default '#1565d8';
 alter table entreprises add column if not exists abonnement_actif boolean not null default true;
 alter table entreprises add column if not exists abonnement_fin date;
+
+-- Fonction réservée au serveur de l'app (clé service), pas au public
+alter function enregistrer_mouvement(uuid,uuid,uuid,uuid,text,integer) set search_path = public;
+revoke execute on function enregistrer_mouvement(uuid,uuid,uuid,uuid,text,integer) from public, anon, authenticated;
