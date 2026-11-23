@@ -392,6 +392,12 @@ const actions = {
     admin(b);
     const v = { nom: txt(b.nom, 80), whatsapp: normTel(b.whatsapp) || '' };
     for (const o of OPERATEURS) v[o] = txt(b[o], 20);
+    // Liens Fondeka (un par montant, car le montant est fixé dans le lien)
+    for (const k of ['fondeka_install_10', 'fondeka_install_15', 'fondeka_install_20', 'fondeka_mensuel']) {
+      const l = String(b[k] || '').trim();
+      if (l && !lienOk(l)) throw new Erreur('Lien Fondeka invalide (il doit commencer par https://).');
+      v[k] = l.slice(0, 500);
+    }
     await sb.from('parametres').upsert({ cle: 'paiement', valeur: v, updated_at: new Date().toISOString() });
     return { paiement: v };
   },
@@ -403,7 +409,10 @@ const actions = {
     const { data: e } = await sb.from('entreprises').select('code,nom,lien_paiement_installation,lien_paiement_mensuel').eq('id', f.entreprise_id).single();
     const p = await lireParametres(sb);
     const moyens = OPERATEURS.filter(o => p[o]).map(o => ({ id: o, numero: p[o] }));
-    const carte = f.type === 'installation' ? e?.lien_paiement_installation : e?.lien_paiement_mensuel;
+    // Lien du client en priorité, sinon le lien Fondeka général qui correspond au montant
+    const montant = Math.round(Number(f.montant));
+    const general = f.type === 'installation' ? p[`fondeka_install_${montant}`] : (montant === 10 ? p.fondeka_mensuel : null);
+    const carte = (f.type === 'installation' ? e?.lien_paiement_installation : e?.lien_paiement_mensuel) || general;
     const { entreprise_id, ...ff } = f;
     return { facture: { ...ff, numero: numFacture(f), reference: `${e?.code}-${f.numero}` }, client: e?.nom, beneficiaire: p.nom || 'My automation', moyens, carte: carte || null };
   },

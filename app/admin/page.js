@@ -60,7 +60,7 @@ export default function Admin() {
   const [envoi, setEnvoi] = useState(null);    // message prêt après un paiement
   const [factures, setFactures] = useState({}); // { installation: id, mensuel: id } factures créées
   const [recu, setRecu] = useState('');         // lien du reçu après paiement
-  const [pp, setPp] = useState({ nom: '', mpesa: '', airtel: '', orange: '', mtn: '' }); const [msgP, setMsgP] = useState('');
+  const [pp, setPp] = useState({ nom: '', mpesa: '', airtel: '', orange: '', mtn: '', fondeka_install_10: '', fondeka_install_15: '', fondeka_install_20: '', fondeka_mensuel: '' }); const [msgP, setMsgP] = useState('');
   const [aVerifier, setAVerifier] = useState(null);
   const [msg, setMsg] = useState(''); const [msg2, setMsg2] = useState('');
   const set = k => e => setF({ ...f, [k]: e.target.value });
@@ -77,7 +77,7 @@ export default function Admin() {
   const chargerParam = async () => {
     setMsgP('…'); const j = await post('admin_parametres_lire', { admin_key: cle });
     if (!j.ok) return setMsgP('❌ ' + j.erreur);
-    setPp({ nom: '', mpesa: '', airtel: '', orange: '', mtn: '', ...j.paiement }); setMsgP('');
+    setPp({ nom: '', mpesa: '', airtel: '', orange: '', mtn: '', fondeka_install_10: '', fondeka_install_15: '', fondeka_install_20: '', fondeka_mensuel: '', ...j.paiement }); setMsgP('');
   };
   const sauverParam = async () => {
     setMsgP('…'); const j = await post('admin_parametres_ecrire', { ...pp, admin_key: cle });
@@ -206,8 +206,12 @@ export default function Admin() {
 
       <div className="card">
         <h2 style={{ marginBottom: 6 }}>⚙️ Mes moyens de paiement</h2>
-        <p>Affichés sur toutes les factures. Laisse vide ceux que tu n'utilises pas.</p>
+        <p>Affichés sur toutes les factures. Laisse vide ce que tu n'utilises pas. Un lien Fondeka mis sur la fiche d'un client passe avant ces liens généraux.</p>
         <button type="button" className="btn sec" style={{ marginTop: 8 }} onClick={chargerParam}>Charger</button>
+        <h2 style={{ margin: '14px 0 4px', fontSize: 15 }}>💳 Liens Fondeka (un par montant)</h2>
+        {[['fondeka_install_10', 'Installation 10 $'], ['fondeka_install_15', 'Installation 15 $'], ['fondeka_install_20', 'Installation 20 $'], ['fondeka_mensuel', 'Abonnement mensuel 10 $']].map(([k, l]) =>
+          <div key={k}><label>{l}</label><input value={pp[k]} onChange={e => setPp({ ...pp, [k]: e.target.value })} placeholder="https://pay.fondeka.com/p/…" inputMode="url" /></div>)}
+        <h2 style={{ margin: '14px 0 4px', fontSize: 15 }}>📱 Mobile Money (facultatif)</h2>
         <label>Nom qui s'affiche quand on te paie (exactement comme sur la confirmation M-Pesa)</label><input value={pp.nom} onChange={e => setPp({ ...pp, nom: e.target.value })} placeholder="ex : Michée Tambwe (fondateur de My automation)" />
         {[['mpesa', 'M-Pesa'], ['airtel', 'Airtel Money'], ['orange', 'Orange Money'], ['mtn', 'MTN MoMo']].map(([k, l]) =>
           <div key={k}><label>Numéro {l}</label><input value={pp[k]} onChange={e => setPp({ ...pp, [k]: e.target.value })} inputMode="tel" /></div>)}

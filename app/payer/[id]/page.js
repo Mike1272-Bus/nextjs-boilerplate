@@ -5,7 +5,7 @@ const post = async (action, body) => {
   const r = await fetch('/api/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return r.json().catch(() => ({ ok: false, erreur: 'Pas de connexion.' }));
 };
-const NOMS = { mpesa: 'M-Pesa', airtel: 'Airtel Money', orange: 'Orange Money', mtn: 'MTN MoMo', carte: 'Carte / lien de paiement' };
+const NOMS = { mpesa: 'M-Pesa', airtel: 'Airtel Money', orange: 'Orange Money', mtn: 'MTN MoMo', carte: 'Payer en ligne (Fondeka)' };
 const COUL = { mpesa: '#e60000', airtel: '#ed1c24', orange: '#ff7900', mtn: '#ffcb05', carte: '#3b4fe4' };
 const dateFr = d => d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
 
@@ -58,10 +58,10 @@ export default function Payer({ params }) {
 
         {f.statut === 'en_attente' && <>
           <div className="card">
-            <h2 style={{ marginBottom: 10 }}>Choisissez comment payer</h2>
+            <h2 style={{ marginBottom: 10 }}>{d.moyens.length ? 'Choisissez comment payer' : 'Paiement'}</h2>
             <div className="chips">{d.moyens.map(m => <button type="button" key={m.id} className={op === m.id ? 'on' : ''} onClick={() => setOp(m.id)}>
               <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: COUL[m.id], marginRight: 6 }} />{NOMS[m.id]}</button>)}
-              {d.carte && <button type="button" className={op === 'carte' ? 'on' : ''} onClick={() => setOp('carte')}>💳 {NOMS.carte}</button>}</div>
+              {d.carte && d.moyens.length > 0 && <button type="button" className={op === 'carte' ? 'on' : ''} onClick={() => setOp('carte')}>💳 {NOMS.carte}</button>}</div>
 
             {moyen && <div style={{ marginTop: 14 }}>
               <p>1. Envoyez <b>{Number(f.montant)} $</b> par {NOMS[moyen.id]} au :</p>
@@ -70,13 +70,16 @@ export default function Payer({ params }) {
               <p style={{ marginTop: 10 }}>2. Dans le message du transfert, indiquez la référence :</p>
               <button type="button" className="btn sec" style={{ marginTop: 8 }} onClick={() => copier(f.reference)}>{f.reference} {copie === f.reference ? '✓ copié' : '📋'}</button>
             </div>}
-            {op === 'carte' && d.carte && <a className="btn" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 14 }} href={d.carte} target="_blank" rel="noreferrer">Payer {Number(f.montant)} $ en ligne →</a>}
+            {op === 'carte' && d.carte && <p style={{ marginTop: 12 }}>1. Payez en toute sécurité sur la page Fondeka :</p>}
+            {op === 'carte' && d.carte && <a className="btn" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 14 }} href={d.carte} target="_blank" rel="noreferrer">💳 Payer {Number(f.montant)} $ avec Fondeka →</a>}
+            {op === 'carte' && d.carte && <p style={{ marginTop: 10 }}>2. Après le paiement, revenez ici et appuyez sur « J'ai payé ».</p>}
+            {!d.carte && d.moyens.length === 0 && <p style={{ marginTop: 10 }}>Contactez My automation au 083 17 10 181 pour payer.</p>}
           </div>
 
           <div className="card">
             <h2 style={{ marginBottom: 6 }}>3. Vous avez payé ?</h2>
             <label>Numéro qui a payé</label><input value={tel} onChange={e => setTel(e.target.value)} inputMode="tel" placeholder="ex : 0812345678" />
-            <label>Code de la transaction (dans le SMS reçu)</label><input value={tx} onChange={e => setTx(e.target.value)} placeholder="facultatif" />
+            <label>Code de la transaction (reçu Fondeka ou SMS)</label><input value={tx} onChange={e => setTx(e.target.value)} placeholder="facultatif" />
             <div style={{ height: 12 }} /><button type="button" className="btn vert" onClick={declarer} disabled={!op}>✅ J'ai payé</button>
             {envoi && <p style={{ marginTop: 10, fontWeight: 700 }}>{envoi}</p>}
           </div>
