@@ -41,7 +41,7 @@ export default function Payer({ params }) {
 
   const f = d.facture;
   const moyen = d.moyens.find(m => m.id === op);
-  const ligne = (a, b, gras) => <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: '1px solid #e1e8f3', fontWeight: gras ? 800 : 500 }}><span>{a}</span><span style={{ textAlign: 'right' }}>{b}</span></div>;
+  const ligne = (a, b, gras) => <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: '1px solid #e1e8f3', fontWeight: gras ? 800 : 500 }}><span>{a}</span><span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{b}</span></div>;
 
   return (
     <div className="login">{entete}
