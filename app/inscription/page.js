@@ -26,6 +26,9 @@ export default function Inscription() {
   if (fini) return <div className="login">{haut}<div className="corps"><div className="card">
     <p style={{ fontWeight: 700 }}>✅ C'est noté, {f.responsable} !</p>
     <p style={{ marginTop: 8 }}>My automation prépare votre application et vous écrit sur WhatsApp ({f.whatsapp}) dans quelques minutes.</p>
+    <a className="btn vert" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 14 }}
+      href={`https://wa.me/243831710181?text=${encodeURIComponent(`Bonjour Mike 👋\n\nJ'ai rempli le formulaire My automation ✅\n\n🏢 ${f.entreprise}\n👤 ${f.responsable}\n\nJ'attends mon application 🙏`)}`}>📲 Prévenir Mike sur WhatsApp</a>
+    <p style={{ marginTop: 10, opacity: .75 }}>Appuyez sur le bouton vert : votre demande sera traitée encore plus vite.</p>
     <p style={{ marginTop: 8 }}>Une question ? 083 17 10 181</p></div></div></div>;
 
   return (
