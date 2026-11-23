@@ -1,7 +1,6 @@
 import './globals.css';
 import './extra.css';
-import '@fontsource-variable/bricolage-grotesque';
-import '@fontsource-variable/figtree';
+import '@fontsource-variable/plus-jakarta-sans';
 
 export const metadata = {
   title: 'My automation',

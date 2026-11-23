@@ -1,13 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { m, AnimatePresence, LazyMotion, domAnimation, MotionConfig, animate, useReducedMotion } from 'motion/react';
+import { m, AnimatePresence, LazyMotion, domMax, MotionConfig, animate, useReducedMotion } from 'motion/react';
 import { Icone } from './icones';
 
 const RESSORT = { type: 'spring', stiffness: 420, damping: 36, mass: .9 };
 
 // Fournisseur : charge seulement les animations utiles (plus léger) et suit le réglage « réduire les animations » du téléphone
 export function Animations({ children }) {
-  return <LazyMotion features={domAnimation} strict><MotionConfig reducedMotion="user">{children}</MotionConfig></LazyMotion>;
+  return <LazyMotion features={domMax} strict><MotionConfig reducedMotion="user">{children}</MotionConfig></LazyMotion>;
 }
 
 // Changement d'écran : glisse légèrement, sans ralentir

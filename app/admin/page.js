@@ -53,7 +53,7 @@ export default function Admin() {
 
   return (
     <div className="login">
-      <div className="head"><div className="logo img"><img src="/logo.png" alt="My automation" /></div><h1>Espace My automation</h1><p className="muted">Créer un client, choisir ses couleurs, gérer son abonnement.</p></div>
+      <div className="haut"><div className="marque"><div className="logo img"><img src="/logo.png" alt="" /></div>My automation</div><h1>Espace administrateur</h1><p>Créer un client, choisir ses couleurs, gérer son abonnement.</p></div><div className="corps" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="card"><label>Clé administrateur</label><input type="password" value={cle} onChange={e => setCle(e.target.value)} required /></div>
 
       <form className="card" onSubmit={creer}>
@@ -83,6 +83,6 @@ export default function Admin() {
         <div style={{ height: 14 }} /><button className="btn">Enregistrer</button>
         {msg2 && <p style={{ marginTop: 12, fontWeight: 700 }}>{msg2}</p>}
       </form>
-    </div>
+    </div></div>
   );
 }

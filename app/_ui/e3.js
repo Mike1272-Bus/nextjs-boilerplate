@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api, money, RAYONS, appliquerCouleurs, Bar, useArticles, ChoixBoutique, boutiqueDefaut } from './base';
+import { api, money, RAYONS, appliquerCouleurs, Bar, useArticles, ChoixBoutique, boutiqueDefaut, Cherche, Vide } from './base';
+import { Personnes, Annonce } from './illus';
 import { Feuille } from './anim';
 import { Icone } from './icones';
 function Clients({ me, notif, retour }) {
@@ -9,7 +10,7 @@ function Clients({ me, notif, retour }) {
   const load = useCallback(() => api('clients').then(j => setList(j.clients)).catch(e => notif(e.message, 1)), [notif]);
   useEffect(() => { load(); api('articles').then(j => setCats([...new Set(j.articles.map(a => a.categorie).filter(Boolean))])).catch(() => {}); }, [load]);
   const toutesCats = [...new Set([...cats, ...(list || []).flatMap(c => c.preferences || [])])];
-  const save = async () => { try { await api('client_save', f); notif('✅ Client enregistré'); setF(null); load(); } catch (e) { notif(e.message, 1); } };
+  const save = async () => { try { await api('client_save', f); notif('Client enregistré'); setF(null); load(); } catch (e) { notif(e.message, 1); } };
   const del = async () => { if (!confirm('Supprimer ce client ?')) return; await api('client_delete', { id: f.id }); setF(null); load(); };
   const tog = c => setF({ ...f, preferences: f.preferences.includes(c) ? f.preferences.filter(x => x !== c) : [...f.preferences, c] });
   const vis = (list || []).filter(c => (c.nom + c.telephone).toLowerCase().includes(q.toLowerCase()));
@@ -17,10 +18,10 @@ function Clients({ me, notif, retour }) {
   return (<>
     <Bar titre={`Mes clients${list ? ' (' + list.length + ')' : ''}`} retour={retour} droite={<button onClick={() => setF(vide)} aria-label="Ajouter"><Icone n="plus" t={20} /></button>} />
     <div className="page">
-      <input placeholder="Chercher un client…" value={q} onChange={e => setQ(e.target.value)} />
-      <div className="card list">
-        {vis.map(c => <button key={c.id} className="item" onClick={() => setF({ ...c, taille: c.taille || '', rayon: c.rayon || 'Tous' })}><div className="t"><b>{c.nom}</b><small>+{c.telephone}{c.rayon && c.rayon !== 'Tous' ? ' · ' + c.rayon : ''}{c.preferences?.length ? ' · ' + c.preferences.join(', ') : ''}</small></div><Icone n="retour" t={18} style={{ transform: 'rotate(180deg)', color: 'var(--gris)', flex: 'none' }} /></button>)}
-        {list && !list.length && <p className="empty">Aucun client. Enregistrez chaque client qui achète : il sera prévenu à chaque arrivage.</p>}
+      <Cherche value={q} onChange={setQ} placeholder="Chercher un client" />
+      <div className="liste">
+        {vis.map(c => <button key={c.id} className="item" onClick={() => setF({ ...c, taille: c.taille || '', rayon: c.rayon || 'Tous' })}><span className="pastille v"><Icone n="whatsapp" t={20} /></span><div className="t"><b>{c.nom}</b><small>+{c.telephone}{c.rayon && c.rayon !== 'Tous' ? ' · ' + c.rayon : ''}{c.preferences?.length ? ' · ' + c.preferences.join(', ') : ''}</small></div><Icone n="chevron" t={18} className="chev" /></button>)}
+        {list && !list.length && <Vide Illus={Personnes} titre="Aucun client enregistré">Enregistrez chaque client qui achète : il sera prévenu à chaque arrivage.</Vide>}
       </div>
     </div>
     <Feuille onClose={() => setF(null)}>{f && <>
@@ -43,7 +44,7 @@ function Arrivage({ me, notif, retour }) {
   useEffect(() => { Promise.all([api('clients'), api('articles').catch(() => ({ articles: [] }))]).then(([c, a]) =>
     setCats([...new Set([...a.articles.map(x => x.categorie).filter(Boolean), ...c.clients.flatMap(x => x.preferences || [])])])).catch(() => {}); }, []);
   useEffect(() => { const t = setTimeout(() => api('annonce', { ...f, envoyer: false }).then(setAp).catch(() => {}), 300); return () => clearTimeout(t); }, [f]);
-  const envoyer = async () => { setBusy(true); try { const j = await api('annonce', { ...f, envoyer: true }); setRes(j); if (j.auto) notif(`✅ Envoyé à ${j.envoyes} client(s)`); } catch (e) { notif(e.message, 1); } finally { setBusy(false); } };
+  const envoyer = async () => { setBusy(true); try { const j = await api('annonce', { ...f, envoyer: true }); setRes(j); if (j.auto) notif(`Envoyé à ${j.envoyes} client(s)`); } catch (e) { notif(e.message, 1); } finally { setBusy(false); } };
   if (res && !res.auto) return (<>
     <Bar titre="Envoyer l'annonce" retour={() => setRes(null)} />
     <div className="page"><p className="muted">Touchez chaque client : WhatsApp s'ouvre avec le message prêt, il suffit d'appuyer sur Envoyer.</p>
@@ -53,13 +54,14 @@ function Arrivage({ me, notif, retour }) {
   return (<>
     <Bar titre="Nouvel arrivage" retour={retour} />
     <div className="page">
+      <div className="illus-tete"><Annonce /><p><b>Prévenez vos clients</b>Choisissez le rayon et l'article : seuls les clients intéressés reçoivent le message.</p></div>
       <div className="card">
         <label>Pour quel rayon ?</label><div className="chips">{RAYONS.map(r => <button key={r} className={f.rayon === r ? 'on' : ''} onClick={() => setF({ ...f, rayon: r })}>{r}</button>)}</div>
         <label>Quel article ?</label><div className="chips">{['Tout', ...cats].map(c => <button key={c} className={f.categorie === c ? 'on' : ''} onClick={() => setF({ ...f, categorie: c })}>{c}</button>)}</div>
         <label>Votre message</label><textarea rows={4} value={f.message} onChange={e => setF({ ...f, message: e.target.value })} placeholder="ex : Nouvelles robes wax arrivées ce matin, tailles S à XL. Quantités limitées !" />
       </div>
       {ap && <div className="card"><h2>Aperçu · {ap.nb} client(s) concerné(s)</h2>{ap.apercu[0] ? <div className="wa">{ap.apercu[0].texte}</div> : <p className="muted">Aucun client ne correspond à ce rayon et cet article.</p>}</div>}
-      <button className="btn" disabled={busy || !f.message.trim() || !ap?.nb} onClick={envoyer}>{busy ? 'Envoi…' : `Envoyer à ${ap?.nb || 0} client(s)`}</button>
+      <button className="btn" disabled={busy || !f.message.trim() || !ap?.nb} onClick={envoyer}><Icone n="whatsapp" t={19} />{busy ? 'Envoi…' : `Envoyer à ${ap?.nb || 0} client(s)`}</button>
     </div>
   </>);
 }
@@ -69,10 +71,10 @@ function Parametres({ me, notif, retour, recharger }) {
   const [eq, setEq] = useState([]); const [u, setU] = useState(null); const [b, setB] = useState(null);
   const loadEq = useCallback(() => api('equipe').then(j => setEq(j.equipe)).catch(e => notif(e.message, 1)), [notif]);
   useEffect(() => { loadEq(); }, [loadEq]);
-  const saveP = async () => { try { await api('parametres_save', p); notif('✅ Paramètres enregistrés'); recharger(); } catch (e) { notif(e.message, 1); } };
-  const saveU = async () => { try { await api('utilisateur_save', u); notif('✅ Membre enregistré'); setU(null); loadEq(); } catch (e) { notif(e.message, 1); } };
+  const saveP = async () => { try { await api('parametres_save', p); notif('Paramètres enregistrés'); recharger(); } catch (e) { notif(e.message, 1); } };
+  const saveU = async () => { try { await api('utilisateur_save', u); notif('Membre enregistré'); setU(null); loadEq(); } catch (e) { notif(e.message, 1); } };
   const delU = async () => { if (!confirm('Retirer ce membre ?')) return; try { await api('utilisateur_delete', { id: u.id }); setU(null); loadEq(); } catch (e) { notif(e.message, 1); } };
-  const saveB = async () => { try { await api('boutique_save', b); notif('✅ Boutique enregistrée'); setB(null); recharger(); } catch (e) { notif(e.message, 1); } };
+  const saveB = async () => { try { await api('boutique_save', b); notif('Boutique enregistrée'); setB(null); recharger(); } catch (e) { notif(e.message, 1); } };
   const delB = async () => { if (!confirm('Retirer cette boutique ?')) return; await api('boutique_delete', { id: b.id }); setB(null); recharger(); };
   const nomB = id => me.boutiques.find(x => x.id === id)?.nom || 'Toutes les boutiques';
   return (<>
@@ -84,9 +86,9 @@ function Parametres({ me, notif, retour, recharger }) {
         <label>Monnaie</label><div className="chips">{['$', 'FC'].map(d => <button key={d} className={p.devise === d ? 'on' : ''} onClick={() => setP({ ...p, devise: d })}>{d}</button>)}</div>
         {!me.whatsapp && <p className="muted" style={{ marginTop: 10 }}>L'envoi automatique sur WhatsApp sera activé par My automation.</p>}
         <div style={{ height: 12 }} /><button className="btn" onClick={saveP}>Enregistrer</button></div>
-      <div className="card"><h2>Boutiques</h2><div className="list">{me.boutiques.map(x => <button key={x.id} className="item" onClick={() => setB(x)}><div className="t"><b>{x.nom}</b></div><Icone n="retour" t={18} style={{ transform: 'rotate(180deg)', color: 'var(--gris)', flex: 'none' }} /></button>)}</div>
+      <div className="card"><h2>Boutiques</h2><div className="list">{me.boutiques.map(x => <button key={x.id} className="item" onClick={() => setB(x)}><div className="t"><b>{x.nom}</b></div><Icone n="chevron" t={18} className="chev" /></button>)}</div>
         <div style={{ height: 8 }} /><button className="btn sec" onClick={() => setB({ nom: '' })}>+ Ajouter une boutique</button></div>
-      <div className="card"><h2>Équipe</h2><div className="list">{eq.map(x => <button key={x.id} className="item" onClick={() => setU({ ...x, pin: '' })}><div className="t"><b>{x.nom}</b><small>{x.role === 'patron' ? 'Responsable' : 'Vendeur'} · {nomB(x.boutique_id)}</small></div><Icone n="retour" t={18} style={{ transform: 'rotate(180deg)', color: 'var(--gris)', flex: 'none' }} /></button>)}</div>
+      <div className="card"><h2>Équipe</h2><div className="list">{eq.map(x => <button key={x.id} className="item" onClick={() => setU({ ...x, pin: '' })}><div className="t"><b>{x.nom}</b><small>{x.role === 'patron' ? 'Responsable' : 'Vendeur'} · {nomB(x.boutique_id)}</small></div><Icone n="chevron" t={18} className="chev" /></button>)}</div>
         <div style={{ height: 8 }} /><button className="btn sec" onClick={() => setU({ nom: '', role: 'vendeur', boutique_id: me.boutiques[0]?.id || '', pin: '' })}>+ Ajouter un vendeur</button></div>
     </div>
     <Feuille onClose={() => setU(null)}>{u && <>

@@ -17,6 +17,11 @@ const P = {
   baisse: 'M7 7l10 10M17 9v8H9',
   plus: 'M12 5v14M5 12h14',
   recherche: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
+  accueil: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-9z',
+  menu: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+  chevron: 'M9 6l6 6-6 6',
+  panier: 'M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2M10 21h.01M17 21h.01',
+  crayon: 'M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4',
   whatsapp: 'M4 20l1.3-4A8 8 0 1 1 8 18.7L4 20z'
 };
 export function Icone({ n, t = 22, className, style }) {

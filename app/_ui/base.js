@@ -8,6 +8,7 @@ async function api(action, body = {}) {
   return j;
 }
 const money = (n, d) => (Math.round(Number(n || 0) * 100) / 100).toLocaleString('fr-FR') + ' ' + (d || '$');
+const unite = (n, u) => `${n} ${u && Math.abs(n) > 1 && !/[sx]$|^kg$|^g$|^l$/i.test(u) ? u + 's' : u || ''}`.trim();
 const RAYONS = ['Tous', 'Femme', 'Homme', 'Enfant'];
 // Couleurs choisies par My automation pour chaque client (gardées sur le téléphone pour l'écran de connexion)
 function appliquerCouleurs(c) {
@@ -36,4 +37,12 @@ function ChoixBoutique({ me, value, onChange }) {
 }
 const boutiqueDefaut = me => me.user.boutique_id || me.boutiques[0]?.id;
 
+function Cherche({ value, onChange, placeholder }) {
+  return <div className="cherche"><Icone n="recherche" t={20} /><input type="search" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} /></div>;
+}
+function Vide({ Illus, titre, children }) {
+  return <div className="empty">{Illus && <Illus />}<b>{titre}</b>{children && <span>{children}</span>}</div>;
+}
+export { Cherche, Vide };
+export { unite };
 export { api, money, RAYONS, appliquerCouleurs, Bar, useArticles, ChoixBoutique, boutiqueDefaut };
