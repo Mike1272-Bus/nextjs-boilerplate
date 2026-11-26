@@ -54,7 +54,7 @@ const VIDE = { code: '', couleur: '#3b4fe4', couleur2: '#5667e7', abonnement_act
 export default function Admin() {
   const [cle, setCle] = useState('');
   const [f, setF] = useState({ code: '', nom: '', patron_nom: '', patron_pin: '', whatsapp: '', boutiques: 'Boutique 1', modules: ['stock', 'arrivage'], couleur: '#3b4fe4', couleur2: '#5667e7', abonnement_fin: '',
-    frais_installation: 15, montant_mensuel: 10, lien_paiement_installation: '', lien_paiement_mensuel: '', installation_payee: false });
+    frais_installation: 15, montant_mensuel: 10, lien_paiement_installation: '', lien_paiement_mensuel: '', installation_payee: false, devise: 'FC' });
   const [m, setM] = useState(VIDE);
   const [ent, setEnt] = useState(null);        // client chargé (suivi du paiement)
   const [pin, setPin] = useState('');          // PIN à envoyer avec l'accès
@@ -117,7 +117,7 @@ export default function Admin() {
 
   const afficher = (e) => {
     setEnt(e);
-    setM({ code: e.code, couleur: e.couleur, couleur2: e.couleur2, abonnement_actif: e.abonnement_actif, abonnement_fin: e.abonnement_fin || '',
+    setM({ code: e.code, devise: e.devise || 'FC', pin: '', couleur: e.couleur, couleur2: e.couleur2, abonnement_actif: e.abonnement_actif, abonnement_fin: e.abonnement_fin || '',
       frais_installation: e.frais_installation, montant_mensuel: e.montant_mensuel, lien_paiement_installation: e.lien_paiement_installation || '', lien_paiement_mensuel: e.lien_paiement_mensuel || '' });
   };
 
@@ -141,7 +141,7 @@ export default function Admin() {
     const j = await post('admin_modifier', { ...m, admin_key: cle });
     if (!j.ok) return setMsg2('❌ ' + j.erreur);
     afficher({ ...j.entreprise, patron_nom: ent?.patron_nom });
-    setMsg2(`✅ ${j.entreprise.nom} : abonnement ${j.entreprise.abonnement_actif ? 'actif' : 'suspendu'}${j.entreprise.abonnement_fin ? ' jusqu\'au ' + j.entreprise.abonnement_fin : ''}, enregistré.`);
+    setMsg2(`✅ ${j.entreprise.nom} : abonnement ${j.entreprise.abonnement_actif ? 'actif' : 'suspendu'}${j.entreprise.abonnement_fin ? ' jusqu\'au ' + j.entreprise.abonnement_fin : ''}, monnaie ${j.entreprise.devise}${j.pin_change ? `, nouveau PIN ${m.pin}` : ''}, enregistré.`);
   };
   const paiement = async type => {
     if (type === 'installation' && pin && !/^\d{4,6}$/.test(pin)) return setMsg2('❌ PIN : 4 à 6 chiffres.');
@@ -205,6 +205,8 @@ export default function Admin() {
         <label>WhatsApp du responsable</label><input value={f.whatsapp} onChange={set('whatsapp')} inputMode="tel" placeholder="ex : 0831710181" />
         <label>Boutiques (séparées par des virgules)</label><input value={f.boutiques} onChange={set('boutiques')} />
         <label>Modules</label><div className="chips">{[['stock', 'Gestion du stock'], ['arrivage', 'Nouvel arrivage']].map(([k, l]) => <button type="button" key={k} className={f.modules.includes(k) ? 'on' : ''} onClick={() => tog(k)}>{l}</button>)}</div>
+        <label>Monnaie des articles</label>
+        <div className="chips">{[['FC', 'Franc congolais (FC)'], ['$', 'Dollar ($)']].map(([k, l]) => <button type="button" key={k} className={f.devise === k ? 'on' : ''} onClick={() => setF({ ...f, devise: k })}>{l}</button>)}</div>
         <Paiement v={f} set={x => setF({ ...f, ...x })} />
         <label>Installation</label>
         <div className="chips">{[[false, '⏳ Pas encore payée'], [true, '✅ Déjà payée']].map(([v, l]) => <button type="button" key={l} className={f.installation_payee === v ? 'on' : ''} onClick={() => setF({ ...f, installation_payee: v })}>{l}</button>)}</div>
@@ -249,6 +251,10 @@ export default function Admin() {
         <label>Abonnement</label>
         <div className="chips">{[[true, '✅ Actif'], [false, '⏸️ Suspendu']].map(([v, l]) => <button type="button" key={l} className={m.abonnement_actif === v ? 'on' : ''} onClick={() => setM({ ...m, abonnement_actif: v })}>{l}</button>)}</div>
         <label>Payé jusqu'au (vide = sans limite)</label><input type="date" value={m.abonnement_fin} onChange={e => setM({ ...m, abonnement_fin: e.target.value })} />
+        <label>Monnaie des articles</label>
+        <div className="chips">{[['FC', 'Franc congolais (FC)'], ['$', 'Dollar ($)']].map(([k, l]) => <button type="button" key={k} className={m.devise === k ? 'on' : ''} onClick={() => setM({ ...m, devise: k })}>{l}</button>)}</div>
+        <label>Nouveau PIN du responsable (vide = garder l'actuel)</label>
+        <input value={m.pin || ''} onChange={e => setM({ ...m, pin: e.target.value.replace(/\D/g, '') })} inputMode="numeric" maxLength={6} placeholder="ex : 4827" />
         <Couleurs c1={m.couleur} c2={m.couleur2} onChange={(a, b) => setM({ ...m, couleur: a, couleur2: b })} />
         <div style={{ height: 14 }} /><button className="btn">Enregistrer</button>
       </form>}

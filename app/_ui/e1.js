@@ -72,7 +72,7 @@ function Accueil({ me, ouvrir, onLogout, notif }) {
       </div>
       {md.includes('stock') && (t ? (
         <section className="caisse" aria-label="Caisse du jour">
-          <div className="haut"><span className="lib">{bq ? `Ventes du jour · ${bq.nom}` : 'Ventes du jour · toutes les boutiques'}</span>
+          <div className="haut"><span className="lib">{me.entreprise.debut_journee ? `Ventes depuis ${me.entreprise.debut_journee}h` : 'Ventes du jour'} · {bq ? bq.nom : 'toutes les boutiques'}</span>
             {evol !== null && <span className="evol"><Icone n={evol >= 0 ? 'hausse' : 'baisse'} t={13} />{evol >= 0 ? '+' : ''}{evol} % vs hier</span>}</div>
           <div className="total"><Compteur valeur={auj.total} format={fmt} /></div>
           <div className="sous-chiffres">

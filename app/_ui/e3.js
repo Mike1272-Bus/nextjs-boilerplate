@@ -67,7 +67,7 @@ function Arrivage({ me, notif, retour }) {
 }
 
 function Parametres({ me, notif, retour, recharger }) {
-  const [p, setP] = useState({ whatsapp_patron: me.entreprise.whatsapp_patron || '', rapport: me.entreprise.rapport || 'soir', devise: me.entreprise.devise || '$' });
+  const [p, setP] = useState({ whatsapp_patron: me.entreprise.whatsapp_patron || '', rapport: me.entreprise.rapport || 'soir', devise: me.entreprise.devise || 'FC', debut_journee: me.entreprise.debut_journee || 0 });
   const [eq, setEq] = useState([]); const [u, setU] = useState(null); const [b, setB] = useState(null);
   const loadEq = useCallback(() => api('equipe').then(j => setEq(j.equipe)).catch(e => notif(e.message, 1)), [notif]);
   useEffect(() => { loadEq(); }, [loadEq]);
@@ -83,7 +83,12 @@ function Parametres({ me, notif, retour, recharger }) {
       <div className="card"><h2>Compte rendu et alertes</h2>
         <label>WhatsApp du responsable</label><input value={p.whatsapp_patron} inputMode="tel" onChange={e => setP({ ...p, whatsapp_patron: e.target.value })} placeholder="ex : 0812345678" />
         <label>Recevoir le compte rendu</label><div className="chips">{[['soir', 'Chaque soir'], ['semaine', 'Chaque semaine'], ['les_deux', 'Les deux']].map(([k, l]) => <button key={k} className={p.rapport === k ? 'on' : ''} onClick={() => setP({ ...p, rapport: k })}>{l}</button>)}</div>
-        <label>Monnaie</label><div className="chips">{['$', 'FC'].map(d => <button key={d} className={p.devise === d ? 'on' : ''} onClick={() => setP({ ...p, devise: d })}>{d}</button>)}</div>
+        <label>Monnaie</label><div className="chips">{['FC', '$'].map(d => <button key={d} className={p.devise === d ? 'on' : ''} onClick={() => setP({ ...p, devise: d })}>{d}</button>)}</div>
+        <label>Ma journée commence à</label>
+        <select value={p.debut_journee} onChange={e => setP({ ...p, debut_journee: Number(e.target.value) })}>
+          {[...Array(24)].map((_, h) => <option key={h} value={h}>{h === 0 ? 'Minuit (00h00)' : `${String(h).padStart(2, '0')}h00`}</option>)}
+        </select>
+        <p className="muted" style={{ marginTop: 6 }}>{p.debut_journee === 0 ? 'La caisse du jour repart à zéro à minuit.' : `Votre journée va de ${p.debut_journee}h00 à ${(p.debut_journee + 23) % 24}h59 le lendemain. La caisse repart à zéro à ${p.debut_journee}h00.`}</p>
         {!me.whatsapp && <p className="muted" style={{ marginTop: 10 }}>L'envoi automatique sur WhatsApp sera activé par My automation.</p>}
         <div style={{ height: 12 }} /><button className="btn" onClick={saveP}>Enregistrer</button></div>
       <div className="card"><h2>Boutiques</h2><div className="list">{me.boutiques.map(x => <button key={x.id} className="item" onClick={() => setB(x)}><div className="t"><b>{x.nom}</b></div><Icone n="chevron" t={18} className="chev" /></button>)}</div>

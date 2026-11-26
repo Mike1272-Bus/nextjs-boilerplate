@@ -28,9 +28,9 @@ function Articles({ me, notif, retour }) {
       <h2>{f.id ? 'Modifier l\'article' : 'Nouvel article'}</h2>
       <label>Nom de l'article</label><input value={f.nom} onChange={e => setF({ ...f, nom: e.target.value })} placeholder="ex : Huile 1 L" />
       <label>Catégorie (facultatif)</label><input value={f.categorie || ''} onChange={e => setF({ ...f, categorie: e.target.value })} list="cats" placeholder="ex : Alimentation, Robes…" /><datalist id="cats">{cats.map(c => <option key={c} value={c} />)}</datalist>
-      <div className="row"><div><label>Prix de vente</label><input value={f.prix_vente} inputMode="decimal" onChange={e => setF({ ...f, prix_vente: e.target.value })} placeholder="0" /></div>
+      <div className="row"><div><label>Prix de vente ({me.entreprise.devise || 'FC'})</label><input value={f.prix_vente} inputMode="decimal" onChange={e => setF({ ...f, prix_vente: e.target.value })} placeholder="0" /></div>
         <div><label>Unité</label><input value={f.unite} onChange={e => setF({ ...f, unite: e.target.value })} list="unites" /><datalist id="unites">{['pièce', 'carton', 'sac', 'kg', 'litre', 'boîte', 'paire'].map(u => <option key={u} value={u} />)}</datalist></div></div>
-      <div className="row"><div><label>Prix d'achat (facultatif)</label><input value={f.prix_achat} inputMode="decimal" onChange={e => setF({ ...f, prix_achat: e.target.value })} /></div>
+      <div className="row"><div><label>Prix d'achat ({me.entreprise.devise || 'FC'}, facultatif)</label><input value={f.prix_achat} inputMode="decimal" onChange={e => setF({ ...f, prix_achat: e.target.value })} /></div>
         <div><label>Alerte quand il reste</label><input value={f.seuil_alerte} inputMode="numeric" onChange={e => setF({ ...f, seuil_alerte: e.target.value })} /></div></div>
       <div style={{ height: 16 }} /><button className="btn" onClick={save}>Enregistrer</button>
       {f.id && <><div style={{ height: 10 }} /><button className="btn rouge" onClick={del}>Retirer l'article</button></>}
@@ -60,17 +60,38 @@ function Rapport({ me, notif, retour }) {
 }
 
 function Historique({ me, notif, retour }) {
-  const [m, setM] = useState(null);
-  useEffect(() => { api('historique').then(j => setM(j.mouvements)).catch(e => notif(e.message, 1)); }, [notif]);
+  const [m, setM] = useState(null); const [sel, setSel] = useState(null); const [busy, setBusy] = useState(false);
+  const p = me.user.role === 'patron', d = me.entreprise.devise;
+  const load = useCallback(() => api('historique').then(j => setM(j.mouvements)).catch(e => notif(e.message, 1)), [notif]);
+  useEffect(() => { load(); }, [load]);
+  const recente = x => Date.now() - new Date(x.created_at).getTime() < 7 * 864e5;
+  const annulable = x => p && x.type === 'vente' && !x.annule_le && recente(x);
+  const annuler = async () => {
+    setBusy(true);
+    try { await api('vente_annuler', { id: sel.id }); notif('Vente annulée, le stock est revenu'); setSel(null); load(); }
+    catch (e) { notif(e.message, 1); } finally { setBusy(false); }
+  };
   const nomB = id => me.boutiques.find(b => b.id === id)?.nom || '';
   const lib = { vente: 'Vente', reception: 'Réception', correction: 'Correction' };
   return (<>
     <Bar titre="Historique" retour={retour} />
     <div className="page"><div className="liste">
-      {m === null ? <p className="empty">Chargement…</p> : !m.length ? <Vide Illus={Cartons} titre="Aucune opération">Les ventes et réceptions apparaîtront ici.</Vide> : m.map(x => (
-        <div key={x.id} className="item"><div className="t"><b>{lib[x.type]} · {x.articles?.nom}</b><small>{new Date(x.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · {nomB(x.boutique_id)} · {x.utilisateurs?.nom || ''}</small></div>
-          <div className="qte">{x.type === 'vente' ? '−' : x.quantite > 0 ? '+' : ''}{x.type === 'vente' ? x.quantite : x.quantite}</div></div>))}
+      {p && <p className="muted">Une erreur de vente ? Touchez la vente pour l'annuler (7 jours maximum).</p>}
+      {m === null ? <p className="empty">Chargement…</p> : !m.length ? <Vide Illus={Cartons} titre="Aucune opération">Les ventes et réceptions apparaîtront ici.</Vide> : m.map(x => {
+        const contenu = <><div className="t"><b style={x.annule_le ? { textDecoration: 'line-through', opacity: .55 } : null}>{lib[x.type]} · {x.articles?.nom}</b>
+          <small>{x.annule_le ? 'Annulée · ' : ''}{new Date(x.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · {nomB(x.boutique_id)} · {x.utilisateurs?.nom || ''}</small></div>
+          <div className="qte" style={x.annule_le ? { textDecoration: 'line-through', opacity: .55 } : null}>{x.type === 'vente' ? '−' : x.quantite > 0 ? '+' : ''}{x.quantite}</div></>;
+        return annulable(x) ? <button key={x.id} className="item" onClick={() => setSel(x)}>{contenu}</button> : <div key={x.id} className="item">{contenu}</div>;
+      })}
     </div></div>
+    <Feuille onClose={() => setSel(null)}>{sel && <>
+      <h2>Annuler cette vente ?</h2>
+      <p><b>{sel.quantite} × {sel.articles?.nom}</b> · {money(sel.montant, d)}</p>
+      <p className="muted">{new Date(sel.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · {nomB(sel.boutique_id)} · {sel.utilisateurs?.nom || ''}</p>
+      <p className="muted">Le stock revient ({sel.quantite} de plus) et le montant sort de la caisse. La vente reste visible, barrée, dans l'historique.</p>
+      <div style={{ height: 14 }} /><button className="btn rouge" disabled={busy} onClick={annuler}>{busy ? 'Annulation…' : 'Oui, annuler la vente'}</button>
+      <div style={{ height: 10 }} /><button className="btn sec" onClick={() => setSel(null)}>Garder la vente</button>
+    </>}</Feuille>
   </>);
 }
 

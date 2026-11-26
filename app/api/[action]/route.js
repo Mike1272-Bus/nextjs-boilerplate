@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import {
   db, Erreur, hashPin, checkPin, signSession, readSession, normTel,
   whatsappActif, envoyerWhatsApp, construireRapport, texteRapport,
-  notifierN8n, abonnementValide, couleurOk
+  notifierN8n, abonnementValide, couleurOk, jourMetier, debutJour, decalerJour, heureDebut, venteValide
 } from '../../../lib/server';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +32,7 @@ const num = v => (v === '' || v === null || v === undefined || isNaN(Number(v)))
 const admin = b => { if (!process.env.ADMIN_KEY || b.admin_key !== process.env.ADMIN_KEY) throw new Erreur('Clé administrateur incorrecte.', 403); };
 const aujourdhui = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0, 10);
 const ajouterJours = (base, n) => { const d = new Date(base + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const CHAMPS_ADMIN = 'id,code,nom,whatsapp_patron,couleur,couleur2,abonnement_actif,abonnement_fin,frais_installation,montant_mensuel,lien_paiement_installation,lien_paiement_mensuel,installation_payee,installation_payee_le';
+const CHAMPS_ADMIN = 'id,code,nom,devise,whatsapp_patron,couleur,couleur2,abonnement_actif,abonnement_fin,frais_installation,montant_mensuel,lien_paiement_installation,lien_paiement_mensuel,installation_payee,installation_payee_le';
 const lienOk = v => /^https?:\/\/\S+$/i.test(String(v || '').trim());
 const OPERATEURS = ['mpesa', 'airtel', 'orange', 'mtn'];
 const numFacture = f => `MA-${new Date(f.created_at).getUTCFullYear()}-${String(f.numero).padStart(4, '0')}`;
@@ -78,7 +78,7 @@ const actions = {
     const { data: boutiques } = await sb.from('boutiques').select('id,nom').eq('entreprise_id', e.id).eq('actif', true).order('created_at');
     return { user: { id: u.id, nom: u.nom, role: u.role, boutique_id: u.boutique_id },
       entreprise: { nom: e.nom, modules: e.modules, devise: e.devise, whatsapp_patron: e.whatsapp_patron, rapport: e.rapport,
-        couleur: e.couleur, couleur2: e.couleur2, abonnement_fin: e.abonnement_fin },
+        couleur: e.couleur, couleur2: e.couleur2, abonnement_fin: e.abonnement_fin, debut_journee: heureDebut(e) },
       boutiques, whatsapp: whatsappActif() };
   },
 
@@ -87,17 +87,17 @@ const actions = {
     const { u, e } = await session(sb);
     const { data: bqs } = await sb.from('boutiques').select('id').eq('entreprise_id', e.id).eq('actif', true);
     const ids = u.role === 'vendeur' && u.boutique_id ? [u.boutique_id] : (bqs || []).map(x => x.id);
-    const L = 2 * 3600e3, jour = t => new Date(new Date(t).getTime() + L).toISOString().slice(0, 10);
+    const jour = t => jourMetier(t, e);
     const now = Date.now(), aujourdhui = jour(now);
-    const debut = new Date(Date.UTC(...aujourdhui.split('-').map((x, i) => i === 1 ? x - 1 : +x)) - 6 * 864e5 - L).toISOString();
+    const debut = debutJour(decalerJour(aujourdhui, -6), e);
     const [{ data: mv }, { data: arts }] = await Promise.all([
-      ids.length ? sb.from('mouvements').select('article_id,boutique_id,quantite,montant,created_at').eq('entreprise_id', e.id).eq('type', 'vente').in('boutique_id', ids).gte('created_at', debut) : { data: [] },
+      ids.length ? sb.from('mouvements').select('*').eq('entreprise_id', e.id).eq('type', 'vente').in('boutique_id', ids).gte('created_at', debut) : { data: [] },
       sb.from('articles').select('id,nom,seuil_alerte').eq('entreprise_id', e.id).eq('actif', true)
     ]);
-    const jours = [...Array(7)].map((_, i) => jour(now - (6 - i) * 864e5));
+    const jours = [...Array(7)].map((_, i) => decalerJour(aujourdhui, i - 6));
     const serie = jours.map(d => ({ date: d, total: 0, nb: 0 }));
     const top = {};
-    (mv || []).forEach(m => { const j = serie.find(x => x.date === jour(m.created_at)); if (j) { j.total += Number(m.montant); j.nb += m.quantite; }
+    (mv || []).filter(venteValide).forEach(m => { const j = serie.find(x => x.date === jour(m.created_at)); if (j) { j.total += Number(m.montant); j.nb += m.quantite; }
       if (jour(m.created_at) === aujourdhui) top[m.article_id] = (top[m.article_id] || 0) + m.quantite; });
     const am = Object.fromEntries((arts || []).map(a => [a.id, a]));
     const t = Object.entries(top).sort((a, b) => b[1] - a[1])[0];
@@ -177,11 +177,21 @@ const actions = {
   },
   async historique(sb) {
     const { u, e } = await session(sb);
-    let q = sb.from('mouvements').select('id,type,quantite,montant,created_at,boutique_id,articles(nom),utilisateurs(nom)')
+    let q = sb.from('mouvements').select('*,articles(nom),utilisateurs(nom)')
       .eq('entreprise_id', e.id).order('created_at', { ascending: false }).limit(60);
     if (u.role === 'vendeur' && u.boutique_id) q = q.eq('boutique_id', u.boutique_id);
     const { data } = await q;
     return { mouvements: data || [] };
+  },
+  // Le responsable annule une vente (erreur de saisie) : le stock revient, la vente reste barrée dans l'historique
+  async vente_annuler(sb, b) {
+    const { u, e } = await session(sb); patron(u);
+    const { data, error } = await sb.rpc('annuler_vente', { p_entreprise: e.id, p_mouvement: b.id, p_utilisateur: u.id });
+    if (error) {
+      if (/function|schema cache/i.test(error.message)) throw new Erreur('Mise à jour de la base nécessaire : contactez My automation.', 500);
+      throw new Erreur(error.message.replace(/^.*?:\s*/, ''));
+    }
+    return { stock_restant: data?.[0]?.stock_restant };
   },
   async rapport(sb, b) {
     const { u, e } = await session(sb); patron(u);
@@ -198,7 +208,13 @@ const actions = {
   // ---------- Paramètres ----------
   async parametres_save(sb, b) {
     const { u, e } = await session(sb); patron(u);
-    await sb.from('entreprises').update({ whatsapp_patron: normTel(b.whatsapp_patron) || null, rapport: ['soir', 'semaine', 'les_deux'].includes(b.rapport) ? b.rapport : 'soir', devise: txt(b.devise, 5) || '$' }).eq('id', e.id);
+    const { error } = await sb.from('entreprises').update({ whatsapp_patron: normTel(b.whatsapp_patron) || null, rapport: ['soir', 'semaine', 'les_deux'].includes(b.rapport) ? b.rapport : 'soir', devise: b.devise === '$' ? '$' : 'FC' }).eq('id', e.id);
+    if (error) throw new Erreur(error.message);
+    const h = Math.round(Number(b.debut_journee));
+    if (b.debut_journee !== undefined && h >= 0 && h <= 23 && h !== heureDebut(e)) {
+      const { error: err } = await sb.from('entreprises').update({ debut_journee: h }).eq('id', e.id);
+      if (err) throw new Erreur('Heure de début : mise à jour de la base nécessaire, contactez My automation.', 500);
+    }
     return {};
   },
   async boutique_save(sb, b) {
@@ -298,7 +314,7 @@ const actions = {
     const modules = Array.isArray(b.modules) && b.modules.length ? b.modules : ['stock', 'arrivage'];
     const payee = b.installation_payee === true;
     const fin = /^\d{4}-\d{2}-\d{2}$/.test(b.abonnement_fin || '') ? b.abonnement_fin : (payee ? ajouterJours(aujourdhui(), 30) : null);
-    const { data: e, error } = await sb.from('entreprises').insert({ code, nom: txt(b.nom), modules, whatsapp_patron: normTel(b.whatsapp) || null,
+    const { data: e, error } = await sb.from('entreprises').insert({ code, nom: txt(b.nom), modules, whatsapp_patron: normTel(b.whatsapp) || null, devise: b.devise === '$' ? '$' : 'FC',
       couleur: couleurOk(b.couleur) ? b.couleur : '#3b4fe4', couleur2: couleurOk(b.couleur2) ? b.couleur2 : '#5667e7',
       ...champsPaiement(b),
       // Tant que l'installation n'est pas payée, l'app reste bloquée (écran « en pause »)
@@ -327,13 +343,21 @@ const actions = {
     if (couleurOk(b.couleur)) maj.couleur = b.couleur;
     if (couleurOk(b.couleur2)) maj.couleur2 = b.couleur2;
     if (typeof b.abonnement_actif === 'boolean') maj.abonnement_actif = b.abonnement_actif;
+    if (b.devise === '$' || b.devise === 'FC') maj.devise = b.devise;
+    if (b.pin && !/^\d{4,6}$/.test(String(b.pin))) throw new Erreur('PIN : 4 à 6 chiffres.');
     if (b.abonnement_fin === '' || b.abonnement_fin === null) maj.abonnement_fin = null;
     else if (/^\d{4}-\d{2}-\d{2}$/.test(b.abonnement_fin || '')) maj.abonnement_fin = b.abonnement_fin;
     const { data, error } = await sb.from('entreprises').update(maj).ilike('code', txt(b.code, 40)).select(CHAMPS_ADMIN);
     if (error) throw new Erreur(error.message);
     if (!data?.length) throw new Erreur('Code entreprise inconnu.');
     const { id, ...ent } = data[0];
-    return { entreprise: ent };
+    let pin_change = false;
+    if (b.pin) {
+      // Nouveau PIN du responsable (le PIN n'est jamais lisible, on le remplace)
+      const { data: p } = await sb.from('utilisateurs').select('id').eq('entreprise_id', id).eq('role', 'patron').eq('actif', true).order('created_at').limit(1);
+      if (p?.[0]) { await sb.from('utilisateurs').update({ pin_hash: hashPin(b.pin) }).eq('id', p[0].id); pin_change = true; }
+    }
+    return { entreprise: ent, pin_change };
   },
   // Paiement Fondeka reçu → 1 clic : installation (active l'app + 30 jours) ou mois suivant (+30 jours)
   async admin_paiement(sb, b) {
@@ -407,7 +431,7 @@ const actions = {
     const code = txt(b.code, 40).toUpperCase().replace(/\s+/g, '');
     if (!code) throw new Erreur('Choisis un code de connexion.');
     if (!/^\d{4,6}$/.test(String(b.pin))) throw new Erreur('PIN du responsable : 4 à 6 chiffres.');
-    const { data: e, error } = await sb.from('entreprises').insert({ code, nom: d.entreprise, modules: d.modules, whatsapp_patron: d.whatsapp || null, rapport: d.rapport,
+    const { data: e, error } = await sb.from('entreprises').insert({ code, nom: d.entreprise, devise: 'FC', modules: d.modules, whatsapp_patron: d.whatsapp || null, rapport: d.rapport,
       couleur: couleurOk(b.couleur) ? b.couleur : '#3b4fe4', couleur2: couleurOk(b.couleur2) ? b.couleur2 : '#5667e7',
       ...champsPaiement(b), installation_payee: false, abonnement_actif: false }).select(CHAMPS_ADMIN).single();
     if (error) throw new Erreur(error.code === '23505' ? 'Ce code entreprise existe déjà.' : error.message);
